@@ -1,0 +1,17 @@
+[project]
+name = "ceda-c7listeners"
+version = "0.1.0"
+description = "CMIP7 Publication Producer/Listener for creating Aggregations and New Citations (PLANC)"
+authors = [
+    {name = "Daniel Westwood",email = "daniel.westwood@stfc.ac.uk"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "confluent-kafka (>=2.14.0,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
