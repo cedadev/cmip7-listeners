@@ -1,4 +1,5 @@
 import logging
+
 try:
     from django.conf import settings
 

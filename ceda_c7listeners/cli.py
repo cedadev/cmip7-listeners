@@ -1,6 +1,9 @@
-from ceda_c7listeners import PublisherListener, AggregationListener
-import click
 import json
+
+import click
+
+from ceda_c7listeners import AggregationListener, PublisherListener
+
 
 @click.command()
 @click.argument('listener_type')

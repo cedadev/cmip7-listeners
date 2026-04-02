@@ -4,13 +4,14 @@ __copyright__ = "Copyright 2026 United Kingdom Research and Innovation"
 
 ## Consumer Unit for Kafka queues, able to utilise the ORM directly
 
-from confluent_kafka import Consumer, Producer, KafkaException
 import glob
+import logging
+import os
 from typing import Union
 
-import logging
 import requests
-import os
+from confluent_kafka import Consumer, KafkaException, Producer
+
 from .utils import logstream
 
 logger = logging.getLogger(__name__)
