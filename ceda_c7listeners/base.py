@@ -3,7 +3,6 @@ import os
 
 import click
 import yaml
-
 from esgf_core_utils.listeners.citation import CitationMessageProcessor
 from esgf_core_utils.models.kafka.consumer import KafkaConsumer
 

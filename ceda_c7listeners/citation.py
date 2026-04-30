@@ -1,17 +1,23 @@
-import json
+import logging
 from typing import Any
 
-import requests
+import httpx
 from confluent_kafka import Message as KafkaMessage
-
 from esgf_core_utils.models.kafka.message_processor import MessageProcessor
 
+from .utils import logstream
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logstream)
+logger.propagate = False
 
 class CitationMessageProcessor(MessageProcessor):
 
     def __init__(self, citation_base_url: str, citation_api_token: str):
         self.citation_base_url = citation_base_url
         self.citation_api_token = citation_api_token
+
+        self.citation_api_new = citation_base_url + '/api/citations/'
 
     def post_citation(self, citation_url: str, citation_data: dict[str, Any]) -> None:
         """
@@ -23,24 +29,61 @@ class CitationMessageProcessor(MessageProcessor):
         - Additional Institutions/Funding Streams/Contacts if available
         """
 
-        citation_data["primary"] = json.dumps(
-            {"first_name": "Daniel", "last_name": "Westwood"}
-        )
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(
+                url=f"{self.citation_base_url}/api/citations/",
+                json=citation_data,
+                headers={"Authorization": f"Token {self.citation_api_token}"},
+            )
 
-        print(citation_data)
-
-        r = requests.post(
-            url=f"{self.citation_base_url}/api/citations/",
-            data=citation_data,
-            headers={"Authorization": f"Token {self.citation_api_token}"},
-            timeout=300,
-        )
-        print(r.status_code)
-        print(r.content)
+        logger.info(f'{citation_url}: {response.status_code}')
 
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
-        return bool(requests.get(citation_url, timeout=300).status_code == 200)
+        with httpx.Client(timeout=self.timeout) as client:
+            return bool(client.get(citation_url).status_code == 200)
+    
+    def citation_url(self, facet_labels: list, stac_info: dict[str,Any]):
+
+        facet_list = []
+        facet_values = {}
+        for facet in facet_labels:
+            facet_list.append(stac_info["properties"].get(facet))
+            facet_values[facet.split(":")[-1]] = stac_info["properties"].get(facet)
+
+        citation_url = self.citation_api_new + ".".join(facet_list)
+        return citation_url, facet_values
+
+    def cordex_citation(self, stac_info: dict):
+
+        cordex_facets = [
+            "cmip7:mip_era",
+            "cmip7:activity_id",
+            "cmip7:institution_id",
+            "cmip7:domain_id",
+            "cmip7:source_id",
+            "cmip7:experiment_id",
+        ]
+
+        return self.citation_url(cordex_facets, stac_info)
+    
+    def cmip7_citation(self, stac_info: dict):
+
+        cmip7_facets = [
+            "cmip7:mip_era",
+            "cmip7:activity_id",
+            "cmip7:institution_id",
+            "cmip7:source_id",
+            "cmip7:experiment_id",
+        ]
+
+        return self.citation_url(cmip7_facets, stac_info)
+    
+    def get_author_info(self, facets: dict):
+        return {}
+    
+    def has_citation_url(self, stac_info: dict):
+        return False
 
     def ingest(self, message: KafkaMessage) -> None:
         """
@@ -54,31 +97,26 @@ class CitationMessageProcessor(MessageProcessor):
         if not stac_publication:
             # Ignore message with no payload content
             return
+        
+        if self.has_citation_url(stac_publication):
+            # No further action required
+            return
 
-        # Replace as needed
-        required_facets = [
-            "cmip7:mip_era",
-            "cmip7:activity_id",
-            "cmip7:institution_id",
-            "cmip7:source_id",
-            "cmip7:experiment_id",
-        ]
+        if stac_publication.get('properties',{}).get('cmip7:domain_id'):
+            citation_url, facet_data = self.cordex_citation(stac_publication)
+        else:
+            citation_url, facet_data = self.cmip7_citation(stac_publication)
 
-        citation_data = {}
-
-        citation_url = self.citation_base_url + "/api/citation/"
-        facet_list = []
-        for facet in required_facets:
-            facet_list.append(stac_publication["properties"].get(facet))
-            citation_data[facet.split(":")[-1]] = stac_publication["properties"].get(
-                facet
-            )
-
-        citation_url += ".".join(facet_list)
-
-        # citation_url = stac_publication.get('properties').get('citation_url')
+        citation_data = {
+            **self.get_author_info(facet_data)
+            **facet_data
+        }
 
         if not self.citation_exists(citation_url):
             self.post_citation(citation_url, citation_data)
 
+        self.update_stac(stac_publication['id'], citation_url)
         # If citation does exist, update the stac record if the citation_url is not present yet.
+
+    def update_stac(self, stac_id: str, citation_url: str):
+        pass
