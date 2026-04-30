@@ -11,7 +11,8 @@ dependencies = [
     "confluent-kafka (>=2.14.0,<3.0.0)",
     "pyyaml (>=6.0.3,<7.0.0)",
     "click (>=8.3.2,<9.0.0)",
-    "esgf-core-utils (>=1.0.7,<2.0.0)"
+    "esgf-core-utils (>=1.0.7,<2.0.0)",
+    "esgcet (>=5.3.6,<6.0.0)"
 ]
 
 

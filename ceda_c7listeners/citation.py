@@ -4,6 +4,7 @@ from typing import Any
 import httpx
 from confluent_kafka import Message as KafkaMessage
 from esgf_core_utils.models.kafka.message_processor import MessageProcessor
+from esgcet.egi_oauth2_device_flow import OAuthDeviceFlowPKCE
 
 from .utils import logstream
 
@@ -18,6 +19,18 @@ class CitationMessageProcessor(MessageProcessor):
         self.citation_api_token = citation_api_token
 
         self.citation_api_new = citation_base_url + '/api/citations/'
+
+        self.stac_api_endpoint = "https://api.esgf.stac.ceda.ac.uk"
+        self.stac_collection = 'CMIP7'
+        self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"},
+        
+        self.stac_auth = OAuthDeviceFlowPKCE(
+            device_endpoint='',
+            token_endpoint='',
+            client_id='',
+            scope='',
+            resource=self.stac_api_endpoint
+        )
 
     def post_citation(self, citation_url: str, citation_data: dict[str, Any]) -> None:
         """
@@ -80,6 +93,11 @@ class CitationMessageProcessor(MessageProcessor):
         return self.citation_url(cmip7_facets, stac_info)
     
     def get_author_info(self, facets: dict):
+        """
+        Get EMD-based author information collected somewhere.
+
+        Also needs to cope with getting CORDEX author information.
+        """
         return {}
     
     def has_citation_url(self, stac_info: dict):
@@ -119,4 +137,28 @@ class CitationMessageProcessor(MessageProcessor):
         # If citation does exist, update the stac record if the citation_url is not present yet.
 
     def update_stac(self, stac_id: str, citation_url: str):
-        pass
+        
+        payload = {
+            "id": stac_id,
+            "patch": [{
+                "op": "add",
+                "path": "/links/-",
+                "value": {
+                    "href": citation_url,
+                    "rel": "citeas",
+                }
+            }]
+        }
+
+        stac_url = f"{self.stac_api_endpoint}/collections/{self.stac_collection}/items/{stac_id}"
+
+        with httpx.Client(verify=False) as client:
+            response = client.patch(
+                url=stac_url,
+                auth=self.stac_auth,
+                json=payload,
+                headers=self.stac_headers)
+            
+        logger.info(f'{stac_url}: {response.status_code}')
+
+        
