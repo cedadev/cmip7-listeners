@@ -1,12 +1,15 @@
 import logging
 from typing import Any
+import json
+import os
 
 import httpx
 from confluent_kafka import Message as KafkaMessage
 from esgf_core_utils.models.kafka.message_processor import MessageProcessor
-from esgcet.egi_oauth2_device_flow import OAuthDeviceFlowPKCE
 
-from .utils import logstream
+from httpx_auth import OAuth2ClientCredentials
+
+from .utils import logstream, SUPPORTED_PROJECTS, STAC_ITEM_TEMPLATE
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -14,22 +17,30 @@ logger.propagate = False
 
 class CitationMessageProcessor(MessageProcessor):
 
-    def __init__(self, citation_base_url: str, citation_api_token: str):
-        self.citation_base_url = citation_base_url
-        self.citation_api_token = citation_api_token
+    def __init__(self):
 
-        self.citation_api_new = citation_base_url + '/api/citations/'
+        if not os.environ['CITATION_BASE_URL']:
+            raise ValueError('Citation Base URL missing')
+        if not os.environ['CITATION_API_TOKEN']:
+            raise ValueError('Citation API Token missing')
+        if not os.environ['STAC_TRANSACTION_API']:
+            raise ValueError('STAC Transaction API endpoint missing')
 
-        self.stac_api_endpoint = "https://api.esgf.stac.ceda.ac.uk"
-        self.stac_collection = 'CMIP7'
-        self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"},
+        self.citation_base_url = os.environ['CITATION_BASE_URL']
+        self.citation_api_token = os.environ['CITATION_API_TOKEN']
+
+        self.citation_api_new = self.citation_base_url + '/citation/'
+
+        self.stac_api_endpoint = os.environ['STAC_TRANSACTION_API']
+
+        self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"}
+        self.timeout = 30
         
-        self.stac_auth = OAuthDeviceFlowPKCE(
-            device_endpoint='',
-            token_endpoint='',
-            client_id='',
-            scope='',
-            resource=self.stac_api_endpoint
+        self.stac_auth = OAuth2ClientCredentials(
+            'https://aai.egi.eu/auth/realms/egi/protocol/openid-connect/token',
+            client_id='ae695f1b-3120-400b-a870-6e951c3356fd',
+            client_secret=os.environ['STAC_API_SECRET'],
+            scope="offline_access entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu",
         )
 
     def post_citation(self, citation_url: str, citation_data: dict[str, Any]) -> None:
@@ -64,12 +75,14 @@ class CitationMessageProcessor(MessageProcessor):
             facet_list.append(stac_info["properties"].get(facet))
             facet_values[facet.split(":")[-1]] = stac_info["properties"].get(facet)
 
-        citation_url = self.citation_api_new + ".".join(facet_list)
+        facet_values['project_id'] = facet_values.pop('mip_era') 
+
+        citation_url = self.citation_api_new + ".".join(facet_list) + '?httpAccept=application/json'
         return citation_url, facet_values
 
     def cordex_citation(self, stac_info: dict):
 
-        cordex_facets = [
+        cordex_facets = [ # Needs updating 17/07/2026
             "cmip7:mip_era",
             "cmip7:activity_id",
             "cmip7:institution_id",
@@ -92,65 +105,78 @@ class CitationMessageProcessor(MessageProcessor):
 
         return self.citation_url(cmip7_facets, stac_info)
     
-    def get_author_info(self, facets: dict):
+    def get_author_info(self, facets: dict) -> dict:
         """
         Get EMD-based author information collected somewhere.
 
         Also needs to cope with getting CORDEX author information.
         """
-        return {}
+        return {
+            'primary':{
+                'first_name':'Citation',
+                'last_name': 'Support',
+            }
+        }
     
     def has_citation_url(self, stac_info: dict):
         return False
 
-    def ingest(self, message: KafkaMessage) -> None:
+    def ingest(self, message: KafkaMessage | dict) -> None:
         """
         Handle a message received from the kafka topic
         """
+    
+        # Pull the STAC item from the message into stac_item
 
-        # get stac content from message
-        # stac_publication = message.value().get("data", {}).get("payload", {}).get("item", None)
-        stac_publication: dict[str, Any] = {}
+        try:
+            data    = message.value().decode("utf-8")
+            payload = json.loads(data).get('data',{}).get('payload',None)
+        except:
+            payload = message['data']['payload']
 
-        if not stac_publication:
-            # Ignore message with no payload content
-            return
+        if not payload:
+            raise ValueError('Message contains no payload')
         
-        if self.has_citation_url(stac_publication):
+        stac_item = STAC_ITEM_TEMPLATE # payload['item_id']
+        item = stac_item['id']
+        collection = 'CMIP7'
+        
+        if collection not in SUPPORTED_PROJECTS:
+            print(f'Skipped item: {item} - collection {collection} ignored')
+            return
+
+        #stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item}').json()
+        
+        if self.has_citation_url(stac_item):
             # No further action required
             return
 
-        if stac_publication.get('properties',{}).get('cmip7:domain_id'):
-            citation_url, facet_data = self.cordex_citation(stac_publication)
+        if stac_item.get('properties',{}).get('cmip7:domain_id'):
+            citation_url, facet_data = self.cordex_citation(stac_item)
         else:
-            citation_url, facet_data = self.cmip7_citation(stac_publication)
+            citation_url, facet_data = self.cmip7_citation(stac_item)
 
-        citation_data = {
-            **self.get_author_info(facet_data)
-            **facet_data
-        }
+        citation_data = facet_data | self.get_author_info(facet_data) | facet_data
 
-        if not self.citation_exists(citation_url):
-            self.post_citation(citation_url, citation_data)
+        #if not self.citation_exists(citation_url):
+        #    self.post_citation(citation_url, citation_data)
 
-        self.update_stac(stac_publication['id'], citation_url)
+        self.update_stac(stac_item['id'], stac_item['collection'], citation_url)
         # If citation does exist, update the stac record if the citation_url is not present yet.
 
-    def update_stac(self, stac_id: str, citation_url: str):
+    def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):
         
-        payload = {
-            "id": stac_id,
-            "patch": [{
-                "op": "add",
-                "path": "/links/-",
-                "value": {
-                    "href": citation_url,
-                    "rel": "citeas",
-                }
-            }]
-        }
+        payload = [{
+            "op":"add",
+            "path": "/links/-",
+            "value": {
+                "href": citation_url,
+                "type": "application/json",
+                "rel":"citeas"
+            }
+        }]
 
-        stac_url = f"{self.stac_api_endpoint}/collections/{self.stac_collection}/items/{stac_id}"
+        stac_url = f"{self.stac_api_endpoint}collections/{stac_collection}/items/{stac_id}"
 
         with httpx.Client(verify=False) as client:
             response = client.patch(
@@ -160,5 +186,4 @@ class CitationMessageProcessor(MessageProcessor):
                 headers=self.stac_headers)
             
         logger.info(f'{stac_url}: {response.status_code}')
-
-        
+        logger.info(response.content)

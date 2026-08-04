@@ -3,7 +3,7 @@ import os
 
 import click
 import yaml
-from esgf_core_utils.listeners.citation import CitationMessageProcessor
+from ceda_c7listeners.citation import CitationMessageProcessor
 from esgf_core_utils.models.kafka.consumer import KafkaConsumer
 
 listeners = {"create_citations": CitationMessageProcessor}
@@ -23,22 +23,7 @@ def probe_fail(healthcheck: str) -> None:
         raise PermissionError("Permission denied accessing healthcheck area")
     os.remove(healthcheck)
 
-
-@click.command()
-@click.argument("listener")
-@click.argument("config")
-@click.argument("secrets")
-@click.option("--healthcheck", help="path to healthcheck probe")
-def main(listener: str, config: str, secrets: str, healthcheck: str) -> None:
-    """
-    Set up a listener given a listener type and set of configurations."""
-
-    conf = {}
-    with open(config) as f:
-        conf.update(json.load(f))
-
-    with open(secrets) as f:
-        conf.update(yaml.safe_load(f))
+def listen(listener: str, healthcheck: str | None = None):
 
     # Start KafkaListener
     if listener not in listeners:
@@ -50,16 +35,25 @@ def main(listener: str, config: str, secrets: str, healthcheck: str) -> None:
     if mptype is None:
         raise ValueError("No listener defined")
 
-    message_processor = mptype(**conf)
+    message_processor = mptype()
     consumer = KafkaConsumer(message_processor=message_processor)
     try:
         if healthcheck:
             probe_success(healthcheck)
         consumer.start()
-    except Exception as _:
+    except Exception as e:
         if healthcheck:
             probe_fail(healthcheck)
 
+
+@click.command()
+@click.argument("listener")
+@click.option("--healthcheck", help="path to healthcheck probe")
+def main(listener: str, healthcheck: str | None) -> None:
+    """
+    Set up a listener given a listener type and set of configurations."""
+
+    listen(listener, healthcheck)
 
 if __name__ == "__main__":
     main()
