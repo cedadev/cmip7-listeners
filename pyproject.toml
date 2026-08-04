@@ -12,7 +12,8 @@ dependencies = [
     "pyyaml (>=6.0.3,<7.0.0)",
     "click (>=8.3.2,<9.0.0)",
     "esgf-core-utils (>=1.0.7,<2.0.0)",
-    "esgcet (>=5.3.6,<6.0.0)"
+    "esgcet (>=5.3.6,<6.0.0)",
+    "httpx-auth (>=0.23.1,<0.24.0)"
 ]
 
 
@@ -26,4 +27,5 @@ dev = [
 ]
 
 [project.scripts]
-public_listen = "ceda_c7listeners.cli:main"
+public_listen = "ceda_c7listeners.base:main"
+update_citations = "ceda_c7listeners.stac:update_all"
