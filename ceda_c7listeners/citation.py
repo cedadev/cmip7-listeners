@@ -20,9 +20,9 @@ class CitationMessageProcessor(MessageProcessor):
 
     def __init__(self):
 
-        if not os.environ['CITATION_API_TOKEN']:
+        if not os.environ.get('CITATION_API_TOKEN'):
             raise ValueError('Citation API Token missing')
-        if not os.environ['STAC_TRANSACTION_API']:
+        if not os.environ.get('STAC_TRANSACTION_API'):
             raise ValueError('STAC Transaction API endpoint missing')
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']

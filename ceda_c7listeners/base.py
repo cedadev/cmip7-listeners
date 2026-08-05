@@ -49,7 +49,7 @@ def listen(listener: str, healthcheck: str | None = None):
             probe_fail(healthcheck)
         raise ValueError("No listener defined")
 
-    if not os.environ['CITATION_BASE_URL']:
+    if not os.environ.get('CITATION_BASE_URL'):
         if healthcheck:
             probe_fail(healthcheck)
         raise ValueError('Citation Base URL missing')
