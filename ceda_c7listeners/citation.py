@@ -2,6 +2,7 @@ import logging
 from typing import Any
 import json
 import os
+import requests
 
 import httpx
 from confluent_kafka import Message as KafkaMessage
@@ -19,8 +20,6 @@ class CitationMessageProcessor(MessageProcessor):
 
     def __init__(self):
 
-        if not os.environ['CITATION_BASE_URL']:
-            raise ValueError('Citation Base URL missing')
         if not os.environ['CITATION_API_TOKEN']:
             raise ValueError('Citation API Token missing')
         if not os.environ['STAC_TRANSACTION_API']:
@@ -35,12 +34,12 @@ class CitationMessageProcessor(MessageProcessor):
 
         self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"}
         self.timeout = 30
-        
+
         self.stac_auth = OAuth2ClientCredentials(
             'https://aai.egi.eu/auth/realms/egi/protocol/openid-connect/token',
             client_id='ae695f1b-3120-400b-a870-6e951c3356fd',
             client_secret=os.environ['STAC_API_SECRET'],
-            scope="offline_access entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu",
+            scope="entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu"
         )
 
     def post_citation(self, citation_url: str, citation_data: dict[str, Any]) -> None:
@@ -61,6 +60,7 @@ class CitationMessageProcessor(MessageProcessor):
             )
 
         logger.info(f'{citation_url}: {response.status_code}')
+        response.raise_for_status()
 
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
@@ -72,23 +72,28 @@ class CitationMessageProcessor(MessageProcessor):
         facet_list = []
         facet_values = {}
         for facet in facet_labels:
-            facet_list.append(stac_info["properties"].get(facet))
-            facet_values[facet.split(":")[-1]] = stac_info["properties"].get(facet)
+            value = stac_info["properties"].get(facet)
+            # Account for list or string properties
+            if isinstance(value, list):
+                value = value[0]
+            facet_values[facet.split(":")[-1]] = value
+            facet_list.append(value)
 
-        facet_values['project_id'] = facet_values.pop('mip_era') 
+        facet_values['project_id'] = facet_values.pop('mip_era', facet_values.get('project_id')) 
+        facet_values['experiment_id'] = facet_values.pop('driving_experiment_id', facet_values.get('experiment_id'))
 
         citation_url = self.citation_api_new + ".".join(facet_list) + '?httpAccept=application/json'
         return citation_url, facet_values
 
     def cordex_citation(self, stac_info: dict):
 
-        cordex_facets = [ # Needs updating 17/07/2026
-            "cmip7:mip_era",
-            "cmip7:activity_id",
-            "cmip7:institution_id",
-            "cmip7:domain_id",
-            "cmip7:source_id",
-            "cmip7:experiment_id",
+        cordex_facets = [
+            "cordex-cmip6:project_id",
+            "cordex-cmip6:activity_id",
+            "cordex-cmip6:domain_id",
+            "cordex-cmip6:institution_id",
+            "cordex-cmip6:driving_experiment_id",
+            "cordex-cmip6:source_id",
         ]
 
         return self.citation_url(cordex_facets, stac_info)
@@ -137,29 +142,31 @@ class CitationMessageProcessor(MessageProcessor):
         if not payload:
             raise ValueError('Message contains no payload')
         
-        stac_item = STAC_ITEM_TEMPLATE # payload['item_id']
-        item = stac_item['id']
-        collection = 'CMIP7'
+        #stac_item = STAC_ITEM_TEMPLATE # payload['item_id']
+        #item = stac_item['id']
+        item = payload['item_id']
+        collection = 'CORDEX-CMIP6'
         
         if collection not in SUPPORTED_PROJECTS:
             print(f'Skipped item: {item} - collection {collection} ignored')
             return
 
-        #stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item}').json()
+        stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item}').json()
         
         if self.has_citation_url(stac_item):
             # No further action required
             return
 
-        if stac_item.get('properties',{}).get('cmip7:domain_id'):
-            citation_url, facet_data = self.cordex_citation(stac_item)
-        else:
-            citation_url, facet_data = self.cmip7_citation(stac_item)
+        match collection:
+            case 'CORDEX-CMIP6':
+                citation_url, facet_data = self.cordex_citation(stac_item)
+            case _:
+                citation_url, facet_data = self.cmip7_citation(stac_item)
 
         citation_data = facet_data | self.get_author_info(facet_data) | facet_data
 
-        #if not self.citation_exists(citation_url):
-        #    self.post_citation(citation_url, citation_data)
+        if not self.citation_exists(citation_url):
+            self.post_citation(citation_url, citation_data)
 
         self.update_stac(stac_item['id'], stac_item['collection'], citation_url)
         # If citation does exist, update the stac record if the citation_url is not present yet.

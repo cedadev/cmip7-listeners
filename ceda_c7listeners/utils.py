@@ -12,7 +12,7 @@ logstream = logging.StreamHandler()
 formatter = logging.Formatter("%(levelname)s [%(name)s]: %(message)s")
 logstream.setFormatter(formatter)
 
-SUPPORTED_PROJECTS = ['CMIP6', 'CMIP7']
+SUPPORTED_PROJECTS = ['CMIP6', 'CMIP7', 'CORDEX-CMIP6']
 
 SUCCESS_MESSAGE = {
         "data": {
@@ -20,7 +20,7 @@ SUCCESS_MESSAGE = {
             "payload": {
                 "collection_id": "CMIP6",
                 "method": "POST",
-                "item_id": "CMIP6.ScenarioMIP.MOHC.UKESM1-0-LL.ssp434.r4i1p1f2.Amon.va.gn.v20190925",
+                "item_id": "CORDEX-CMIP6.DD.NAM-25.CCCma.CanESM5-1.historical.r1i1p1f2.CanRCM5-SN.v1-r2.mon.tas.v20250101",
             },
         },
         "metadata": {
