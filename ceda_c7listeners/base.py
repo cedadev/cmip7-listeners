@@ -18,7 +18,10 @@ logger.propagate = False
 def ping_citation_service():
     import requests
     logger.info(f"Waiting to connect to {os.environ['CITATION_BASE_URL']}")
-    r = requests.head(f"{os.environ['CITATION_BASE_URL']}/citations")
+    try:
+        r = requests.head(f"{os.environ['CITATION_BASE_URL']}/citations")
+    except Exception as _:
+        return False
     return r.status_code == 200
 
 def listen(listener: str, healthcheck: str | None = None):

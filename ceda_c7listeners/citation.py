@@ -69,7 +69,8 @@ class CitationMessageProcessor(MessageProcessor):
         facet_values = {}
         for facet in facet_labels:
             value = stac_info["properties"].get(facet)
-            # Account for list or string properties
+
+            # Account for list or string properties - pick the first item only for use as citation DRS + facet
             if isinstance(value, list):
                 value = value[0]
             facet_values[facet.split(":")[-1]] = value
