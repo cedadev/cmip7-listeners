@@ -147,7 +147,8 @@ STAC_ITEM_TEMPLATE = {
 ENVIRONMENT_REQUIREMENTS = [
     "CITATION_BASE_URL",
     "CITATION_API_TOKEN",
-    "STAC_TRANSACTION_API"
+    "STAC_TRANSACTION_API",
+    "STAC_API_SECRET"
 ]
 
 def probe_success(healthcheck: str) -> None:

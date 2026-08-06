@@ -17,11 +17,14 @@ logger.propagate = False
 
 def ping_citation_service():
     import requests
-    logger.info(f"Waiting to connect to {os.environ['CITATION_BASE_URL']}")
+    url = os.path.join(os.environ['CITATION_BASE_URL'],"citations","")
+    logger.info(f"Waiting to connect to {url}")
     try:
-        r = requests.head(f"{os.environ['CITATION_BASE_URL']}/citations", verify=False)
-    except Exception as _:
+        r = requests.head(url, verify=False)
+    except Exception as e:
+        print(e)
         return False
+    print(r)
     return r.status_code == 200
 
 def listen(listener: str, healthcheck: str | None = None):
