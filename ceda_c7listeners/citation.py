@@ -48,7 +48,7 @@ class CitationMessageProcessor(MessageProcessor):
         - Additional Institutions/Funding Streams/Contacts if available
         """
 
-        with httpx.Client(timeout=self.timeout) as client:
+        with httpx.Client(timeout=self.timeout, verify=False) as client:
             response = client.post(
                 url=f"{self.citation_base_url}/api/citations/",
                 json=citation_data,

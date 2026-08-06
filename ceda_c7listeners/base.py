@@ -19,7 +19,7 @@ def ping_citation_service():
     import requests
     logger.info(f"Waiting to connect to {os.environ['CITATION_BASE_URL']}")
     try:
-        r = requests.head(f"{os.environ['CITATION_BASE_URL']}/citations")
+        r = requests.head(f"{os.environ['CITATION_BASE_URL']}/citations", verify=False)
     except Exception as _:
         return False
     return r.status_code == 200
