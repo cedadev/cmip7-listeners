@@ -95,7 +95,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         with httpx.Client(timeout=self.timeout, verify=False) as client:
             response = client.post(
-                url=f"{self.citation_base_url}/api/citations/",
+                url=os.path.join(self.citation_base_url, "api/citations/"),
                 json=citation_data,
                 headers={"Authorization": f"Token {self.citation_api_token}"},
             )
@@ -112,7 +112,7 @@ class CitationMessageProcessor(MessageProcessor):
 
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
-        with httpx.Client(timeout=self.timeout) as client:
+        with httpx.Client(timeout=self.timeout, verify=False) as client:
             return bool(client.get(citation_url).status_code == 200)
     
     def citation_url(self, facet_labels: list, stac_info: dict[str,Any]):
@@ -236,6 +236,7 @@ class CitationMessageProcessor(MessageProcessor):
                 if link['href'] != citation_url:
                     logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
                 add = False
+                break
 
         if status != 200:
             return 
