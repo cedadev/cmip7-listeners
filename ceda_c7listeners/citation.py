@@ -7,6 +7,7 @@ import requests
 import httpx
 from confluent_kafka import Message as KafkaMessage
 from esgf_core_utils.models.kafka.message_processor import MessageProcessor
+from esgf_core_utils.models.kafka.consumer import KafkaConsumer, KafkaException
 
 from httpx_auth import OAuth2ClientCredentials
 
@@ -16,6 +17,39 @@ from .external import poll_wdc_api
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
 logger.propagate = False
+
+class CitationKafkaConsumer(KafkaConsumer):
+
+    def start(self) -> None:
+        """Start consuming messages"""
+        self.consumer.subscribe(self.settings.topics)
+
+        try:
+            logging.info(
+                "Kafka consumer started. Subscribed to topics: %s",
+                self.settings.topics,
+            )
+
+            while True:
+                message = self.consumer.poll(timeout=self.settings.timeout)
+                logging.info(
+                    f"Kafka consuming message: {message}",
+                )
+
+        except KeyboardInterrupt:
+            logging.info("Kafka consumer interrupted. Exiting")
+
+        except KafkaException as e:
+            logging.error("Kafka exception: %s", e)
+
+        except Exception as e:
+            logging.error("Other exception: %s", e)
+
+        finally:
+            logging.info("Closing Kafka consumer")
+
+            self.consumer.close()
+    
 
 class CitationMessageProcessor(MessageProcessor):
 

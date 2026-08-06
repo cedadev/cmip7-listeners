@@ -2,9 +2,8 @@ import os
 import click
 import logging
 import time
-from esgf_core_utils.models.kafka.consumer import KafkaConsumer
 
-from ceda_c7listeners.citation import CitationMessageProcessor
+from ceda_c7listeners.citation import CitationMessageProcessor, CitationKafkaConsumer
 from ceda_c7listeners.utils import probe_success, probe_fail, raise_missing_env_errors
 
 listeners = {"create_citations": CitationMessageProcessor}
@@ -62,7 +61,7 @@ def listen(listener: str, healthcheck: str | None = None):
         raise ValueError('Could not establish connection to Citation Service in 100s')
 
     message_processor = mptype()
-    consumer = KafkaConsumer(message_processor=message_processor)
+    consumer = CitationKafkaConsumer(message_processor=message_processor)
     try:
         consumer.start()
     except Exception as e:
