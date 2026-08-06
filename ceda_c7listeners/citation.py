@@ -69,7 +69,7 @@ class CitationMessageProcessor(MessageProcessor):
         self.citation_base_url = os.environ['CITATION_BASE_URL']
         self.citation_api_token = os.environ['CITATION_API_TOKEN']
 
-        self.citation_api_new = self.citation_base_url + '/citation/'
+        self.citation_api_new = os.path.join(self.citation_base_url, 'citation/')
 
         self.stac_api_endpoint = os.environ['STAC_TRANSACTION_API']
 
