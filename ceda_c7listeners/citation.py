@@ -10,7 +10,8 @@ from esgf_core_utils.models.kafka.message_processor import MessageProcessor
 
 from httpx_auth import OAuth2ClientCredentials
 
-from .utils import logstream, SUPPORTED_PROJECTS, STAC_ITEM_TEMPLATE
+from .utils import logstream, SUPPORTED_PROJECTS
+from .external import poll_wdc_api
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -19,11 +20,6 @@ logger.propagate = False
 class CitationMessageProcessor(MessageProcessor):
 
     def __init__(self):
-
-        if not os.environ.get('CITATION_API_TOKEN'):
-            raise ValueError('Citation API Token missing')
-        if not os.environ.get('STAC_TRANSACTION_API'):
-            raise ValueError('STAC Transaction API endpoint missing')
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
         self.citation_api_token = os.environ['CITATION_API_TOKEN']
@@ -110,12 +106,19 @@ class CitationMessageProcessor(MessageProcessor):
 
         return self.citation_url(cmip7_facets, stac_info)
     
-    def get_author_info(self, facets: dict) -> dict:
+    def get_author_info(self, facets: dict, collection: str, item_id: str) -> dict:
         """
         Get EMD-based author information collected somewhere.
 
         Also needs to cope with getting CORDEX author information.
         """
+
+        # Special handling for CORDEX CMIP6 using WDC portal
+        if collection == 'CORDEX-CMIP6':
+            authorset = poll_wdc_api(item_id)
+            if authorset:
+                return authorset
+
         return {
             'primary':{
                 'first_name':'Citation',
@@ -144,14 +147,14 @@ class CitationMessageProcessor(MessageProcessor):
         
         #stac_item = STAC_ITEM_TEMPLATE # payload['item_id']
         #item = stac_item['id']
-        item = payload['item_id']
+        item_id = payload['item_id']
         collection = 'CORDEX-CMIP6'
         
         if collection not in SUPPORTED_PROJECTS:
-            print(f'Skipped item: {item} - collection {collection} ignored')
+            print(f'Skipped item: {item_id} - collection {collection} ignored')
             return
 
-        stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item}').json()
+        stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item_id}').json()
         
         if self.has_citation_url(stac_item):
             # No further action required
@@ -160,15 +163,16 @@ class CitationMessageProcessor(MessageProcessor):
         match collection:
             case 'CORDEX-CMIP6':
                 citation_url, facet_data = self.cordex_citation(stac_item)
+                
             case _:
                 citation_url, facet_data = self.cmip7_citation(stac_item)
 
-        citation_data = facet_data | self.get_author_info(facet_data) | facet_data
+        citation_data = facet_data | self.get_author_info(facet_data, collection, item_id) | facet_data
 
         if not self.citation_exists(citation_url):
             self.post_citation(citation_url, citation_data)
 
-        self.update_stac(stac_item['id'], stac_item['collection'], citation_url)
+        self.update_stac(item_id, collection, citation_url)
         # If citation does exist, update the stac record if the citation_url is not present yet.
 
     def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):

@@ -143,3 +143,36 @@ STAC_ITEM_TEMPLATE = {
     ],
     "assets": {},
 }
+
+ENVIRONMENT_REQUIREMENTS = [
+    "CITATION_BASE_URL",
+    "CITATION_API_TOKEN",
+    "STAC_TRANSACTION_API"
+]
+
+def probe_success(healthcheck: str) -> None:
+
+    hdir = "/".join(healthcheck.split("/")[:-1])
+    if not os.access(hdir, os.W_OK):
+        raise PermissionError("Permission denied accessing healthcheck area")
+    open(healthcheck, "a").close()
+
+
+def probe_fail(healthcheck: str) -> None:
+    hdir = "/".join(healthcheck.split("/")[:-1])
+    if not os.access(hdir, os.W_OK):
+        raise PermissionError("Permission denied accessing healthcheck area")
+    os.remove(healthcheck)
+
+def raise_missing_env_errors(healthcheck):
+
+    missing = []
+    for env in ENVIRONMENT_REQUIREMENTS:
+        if not os.environ.get(env):
+            missing.append(env)
+
+    if missing:
+        if healthcheck:
+            probe_fail(healthcheck)
+        raise ValueError(f'Missing variables: {", ".join(missing)}')
+

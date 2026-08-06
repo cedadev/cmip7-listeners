@@ -2,8 +2,10 @@ import os
 import click
 import logging
 import time
-from ceda_c7listeners.citation import CitationMessageProcessor
 from esgf_core_utils.models.kafka.consumer import KafkaConsumer
+
+from ceda_c7listeners.citation import CitationMessageProcessor
+from ceda_c7listeners.utils import probe_success, probe_fail, raise_missing_env_errors
 
 listeners = {"create_citations": CitationMessageProcessor}
 
@@ -13,20 +15,6 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
 logger.propagate = False
 
-def probe_success(healthcheck: str) -> None:
-
-    hdir = "/".join(healthcheck.split("/")[:-1])
-    if not os.access(hdir, os.W_OK):
-        raise PermissionError("Permission denied accessing healthcheck area")
-    open(healthcheck, "a").close()
-
-
-def probe_fail(healthcheck: str) -> None:
-    hdir = "/".join(healthcheck.split("/")[:-1])
-    if not os.access(hdir, os.W_OK):
-        raise PermissionError("Permission denied accessing healthcheck area")
-    os.remove(healthcheck)
-
 def ping_citation_service():
     import requests
     logger.info(f"Waiting to connect to {os.environ['CITATION_BASE_URL']}")
@@ -34,6 +22,12 @@ def ping_citation_service():
     return r.status_code == 200
 
 def listen(listener: str, healthcheck: str | None = None):
+
+    # Immediately mark as ready on setup - will change to fail if there are errors.
+    if healthcheck:
+        probe_success(healthcheck)
+
+    raise_missing_env_errors(healthcheck)
 
     # Start KafkaListener
     if listener not in listeners:
@@ -48,11 +42,6 @@ def listen(listener: str, healthcheck: str | None = None):
         if healthcheck:
             probe_fail(healthcheck)
         raise ValueError("No listener defined")
-
-    if not os.environ.get('CITATION_BASE_URL'):
-        if healthcheck:
-            probe_fail(healthcheck)
-        raise ValueError('Citation Base URL missing')
 
     connected = ping_citation_service()
     tries = 0
@@ -69,8 +58,6 @@ def listen(listener: str, healthcheck: str | None = None):
     message_processor = mptype()
     consumer = KafkaConsumer(message_processor=message_processor)
     try:
-        if healthcheck:
-            probe_success(healthcheck)
         consumer.start()
     except Exception as e:
         if healthcheck:
