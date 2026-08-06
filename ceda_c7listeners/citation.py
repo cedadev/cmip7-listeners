@@ -3,6 +3,7 @@ from typing import Any
 import json
 import os
 import requests
+import time
 
 import httpx
 from confluent_kafka import Message as KafkaMessage
@@ -31,10 +32,18 @@ class CitationKafkaConsumer(KafkaConsumer):
             )
 
             while True:
+                message = None
                 message = self.consumer.poll(timeout=self.settings.timeout)
-                logging.info(
-                    f"Kafka consuming message: {message}",
-                )
+                logging.info(f"Kafka consuming message: {message}")
+
+                if message is None:
+                    time.sleep(0.1)
+                    continue
+
+                self.message_processor.ingest(message)
+
+                self.consumer.commit(message=message, asynchronous=False)
+
 
         except KeyboardInterrupt:
             logging.info("Kafka consumer interrupted. Exiting")
@@ -53,7 +62,9 @@ class CitationKafkaConsumer(KafkaConsumer):
 
 class CitationMessageProcessor(MessageProcessor):
 
-    def __init__(self):
+    def __init__(self, skip_exceptions: bool = False):
+
+        self.skip_exceptions = skip_exceptions
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
         self.citation_api_token = os.environ['CITATION_API_TOKEN']
@@ -90,7 +101,14 @@ class CitationMessageProcessor(MessageProcessor):
             )
 
         logger.info(f'{citation_url}: {response.status_code}')
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+            return 200
+        except Exception as e:
+            logger.error(f'Exception encountered: {e}')
+            if not self.skip_exceptions:
+                raise e
+            return 500
 
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
@@ -180,16 +198,20 @@ class CitationMessageProcessor(MessageProcessor):
         if not payload:
             raise ValueError('Message contains no payload')
         
-        #stac_item = STAC_ITEM_TEMPLATE # payload['item_id']
-        #item = stac_item['id']
         item_id = payload['item_id']
-        collection = 'CORDEX-CMIP6'
+        collection = payload['collection_id']
+
+        logger.info(f'Assessing info for {item_id}')
         
         if collection not in SUPPORTED_PROJECTS:
-            print(f'Skipped item: {item_id} - collection {collection} ignored')
+            logger.info(f'Skipped item: {item_id} - collection {collection} ignored')
             return
 
         stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item_id}').json()
+
+        if 'type' not in stac_item:
+            logger.info(f'Error: Failed to fetch item: {item_id} from {collection}')
+            return
         
         if self.has_citation_url(stac_item):
             # No further action required
@@ -204,11 +226,26 @@ class CitationMessageProcessor(MessageProcessor):
 
         citation_data = facet_data | self.get_author_info(facet_data, collection, item_id) | facet_data
 
+        status = 200
         if not self.citation_exists(citation_url):
-            self.post_citation(citation_url, citation_data)
+            status = self.post_citation(citation_url, citation_data)
 
-        self.update_stac(item_id, collection, citation_url)
-        # If citation does exist, update the stac record if the citation_url is not present yet.
+        add = True
+        for link in stac_item['links']:
+            if link['rel'] == 'citeas':
+                if link['href'] != citation_url:
+                    logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
+                add = False
+
+        if status != 200:
+            return 
+
+        if add:
+            # If citation does exist, update the stac record if the citation_url is not present yet.
+            self.update_stac(item_id, collection, citation_url)
+        else:
+            logger.info(f'Skipped pre-existing citation for STAC item {item_id}')
+        
 
     def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):
         
@@ -216,6 +253,31 @@ class CitationMessageProcessor(MessageProcessor):
             "op":"add",
             "path": "/links/-",
             "value": {
+    # {
+    #   "rel": "self",
+    #   "type": "application/geo+json",
+    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6/items/CORDEX-CMIP6.DD.NAM-25.CCCma.CanESM5-1.historical.r1i1p1f2.CanRCM5-SN.v1-r2.mon.tas.v20250101"
+    # },
+    # {
+    #   "rel": "parent",
+    #   "type": "application/json",
+    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6"
+    # },
+    # {
+    #   "rel": "collection",
+    #   "type": "application/json",
+    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6"
+    # },
+    # {
+    #   "rel": "root",
+    #   "type": "application/json",
+    #   "href": "https://transaction-int.east.esgf.io/"
+    # },
+    # {
+    #   "rel": "citeas",
+    #   "href": "http://127.0.0.1:8000/citation/CORDEX-CMIP6.DD.NAM-25.CCCma.historical.CanRCM5-SN?httpAccept=application/json",
+    #   "type": "application/json"
+    # }]}]
                 "href": citation_url,
                 "type": "application/json",
                 "rel":"citeas"

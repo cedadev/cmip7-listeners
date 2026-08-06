@@ -20,13 +20,11 @@ def ping_citation_service():
     logger.info(f"Waiting to connect to {url}")
     try:
         r = requests.head(url, verify=False)
-    except Exception as e:
-        print(e)
+    except Exception as _:
         return False
-    print(r)
     return r.status_code == 200
 
-def listen(listener: str, healthcheck: str | None = None):
+def listen(listener: str, healthcheck: str | None = None, skip_exceptions: bool = False):
 
     # Immediately mark as ready on setup - will change to fail if there are errors.
     if healthcheck:
@@ -60,7 +58,7 @@ def listen(listener: str, healthcheck: str | None = None):
             probe_fail(healthcheck)
         raise ValueError('Could not establish connection to Citation Service in 100s')
 
-    message_processor = mptype()
+    message_processor = mptype(skip_exceptions=skip_exceptions)
     consumer = CitationKafkaConsumer(message_processor=message_processor)
     try:
         consumer.start()
@@ -72,11 +70,12 @@ def listen(listener: str, healthcheck: str | None = None):
 @click.command()
 @click.argument("listener")
 @click.option("--healthcheck", help="path to healthcheck probe")
-def main(listener: str, healthcheck: str | None) -> None:
+@click.option('--skip_exceptions',is_flag=True)
+def main(listener: str, healthcheck: str | None, skip_exceptions: bool = False) -> None:
     """
     Set up a listener given a listener type and set of configurations."""
 
-    listen(listener, healthcheck)
+    listen(listener, healthcheck, skip_exceptions=skip_exceptions)
 
 if __name__ == "__main__":
     main()
