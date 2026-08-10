@@ -59,6 +59,9 @@ class CitationKafkaConsumer(KafkaConsumer):
             logging.info("Closing Kafka consumer")
 
             self.consumer.close()
+
+        except Exception as e:
+            raise e
     
 
 class CitationMessageProcessor(MessageProcessor):

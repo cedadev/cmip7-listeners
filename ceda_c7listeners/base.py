@@ -65,6 +65,7 @@ def listen(listener: str, healthcheck: str | None = None, skip_exceptions: bool 
     except Exception as e:
         if healthcheck:
             probe_fail(healthcheck)
+        raise e
 
 
 @click.command()
