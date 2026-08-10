@@ -33,28 +33,29 @@ class CitationKafkaConsumer(KafkaConsumer):
 
             while True:
                 message = None
-                message = self.consumer.poll(timeout=self.settings.timeout)
-                logging.info(f"Kafka consuming message: {message}")
+                try:
+                    message = self.consumer.poll(timeout=self.settings.timeout)
+                    logging.info(f"Kafka consuming message: {message}")
 
-                if message is None:
-                    time.sleep(0.1)
-                    continue
+                    if message is None:
+                        time.sleep(0.1)
+                        continue
 
-                self.message_processor.ingest(message)
+                    self.message_processor.ingest(message)
 
-                self.consumer.commit(message=message, asynchronous=False)
+                    self.consumer.commit(message=message, asynchronous=False)
 
+                except KafkaException as e:
+                    logging.error("Kafka exception: %s", e)
+                    if os.environ.get("RAISE_ALL_INTERNAL_ERRORS",False):
+                        raise e
+        
+                except Exception as e:
+                    logging.error("Other exception: %s", e)
+                    if os.environ.get("RAISE_ALL_INTERNAL_ERRORS",False):
+                        raise e
 
-        except KeyboardInterrupt:
-            logging.info("Kafka consumer interrupted. Exiting")
-
-        except KafkaException as e:
-            logging.error("Kafka exception: %s", e)
-
-        except Exception as e:
-            logging.error("Other exception: %s", e)
-
-        finally:
+        except KeyboardInterrupt as e:
             logging.info("Closing Kafka consumer")
 
             self.consumer.close()
@@ -254,31 +255,6 @@ class CitationMessageProcessor(MessageProcessor):
             "op":"add",
             "path": "/links/-",
             "value": {
-    # {
-    #   "rel": "self",
-    #   "type": "application/geo+json",
-    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6/items/CORDEX-CMIP6.DD.NAM-25.CCCma.CanESM5-1.historical.r1i1p1f2.CanRCM5-SN.v1-r2.mon.tas.v20250101"
-    # },
-    # {
-    #   "rel": "parent",
-    #   "type": "application/json",
-    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6"
-    # },
-    # {
-    #   "rel": "collection",
-    #   "type": "application/json",
-    #   "href": "https://transaction-int.east.esgf.io/collections/CORDEX-CMIP6"
-    # },
-    # {
-    #   "rel": "root",
-    #   "type": "application/json",
-    #   "href": "https://transaction-int.east.esgf.io/"
-    # },
-    # {
-    #   "rel": "citeas",
-    #   "href": "http://127.0.0.1:8000/citation/CORDEX-CMIP6.DD.NAM-25.CCCma.historical.CanRCM5-SN?httpAccept=application/json",
-    #   "type": "application/json"
-    # }]}]
                 "href": citation_url,
                 "type": "application/json",
                 "rel":"citeas"
