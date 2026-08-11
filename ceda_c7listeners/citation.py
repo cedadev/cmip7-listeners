@@ -105,6 +105,8 @@ class CitationMessageProcessor(MessageProcessor):
             )
 
         logger.info(f'{citation_url}: {response.status_code}')
+        logger.info(response.content)
+        
         try:
             response.raise_for_status()
             return 200
