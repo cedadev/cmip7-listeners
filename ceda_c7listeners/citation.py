@@ -21,6 +21,19 @@ logger.propagate = False
 
 class CitationKafkaConsumer(KafkaConsumer):
 
+    def static_start(self, startwith) -> None:
+
+        for pseudo_message in startwith:
+            message = {
+                'data':{
+                    'payload':pseudo_message
+                }
+            }
+            try:
+                _ = self.message_processor.ingest(message)
+            except Exception as e:
+                print(e)
+
     def start(self) -> None:
         """Start consuming messages"""
         self.consumer.subscribe(self.settings.topics)
@@ -41,9 +54,10 @@ class CitationKafkaConsumer(KafkaConsumer):
                         time.sleep(0.1)
                         continue
 
-                    self.message_processor.ingest(message)
+                    commit = self.message_processor.ingest(message)
 
-                    self.consumer.commit(message=message, asynchronous=False)
+                    if commit:
+                        self.consumer.commit(message=message, asynchronous=False)
 
                 except KafkaException as e:
                     logging.error("Kafka exception: %s", e)
@@ -162,8 +176,8 @@ class CitationMessageProcessor(MessageProcessor):
             "cmip6plus:mip_era",
             "cmip6plus:activity_id",
             "cmip6plus:institution_id",
-            "cmip6plus:experiment_id",
             "cmip6plus:source_id",
+            "cmip6plus:experiment_id",
         ]
 
         return self.citation_url(cmip6plus_facets, stac_info)
@@ -223,7 +237,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         # From message poll to here should be minimised
         if collection not in SUPPORTED_PROJECTS:
-            return
+            return True
 
         item_id = payload['item_id']
 
@@ -236,11 +250,11 @@ class CitationMessageProcessor(MessageProcessor):
 
         if 'type' not in stac_item:
             logger.info(f'Error: Failed to fetch item: {item_id} from {collection}')
-            return
+            return False
         
         if self.has_citation_url(stac_item):
             # No further action required
-            return
+            return True
 
         match collection:
             case 'CORDEX-CMIP6':
@@ -265,13 +279,15 @@ class CitationMessageProcessor(MessageProcessor):
                 break
 
         if status != 200:
-            return 
+            return False
 
         if add:
             # If citation does exist, update the stac record if the citation_url is not present yet.
             self.update_stac(item_id, collection, citation_url)
         else:
             logger.info(f'Skipped pre-existing citation for STAC item {item_id}')
+
+        return True
         
 
     def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):

@@ -24,7 +24,10 @@ def ping_citation_service():
         return False
     return r.status_code == 200
 
-def listen(listener: str, healthcheck: str | None = None, skip_exceptions: bool = False):
+def listen(
+        listener: str, healthcheck: str | None = None, 
+        skip_exceptions: bool = False, 
+        startwith_items: list | None = None):
 
     # Immediately mark as ready on setup - will change to fail if there are errors.
     if healthcheck:
@@ -61,6 +64,9 @@ def listen(listener: str, healthcheck: str | None = None, skip_exceptions: bool 
     message_processor = mptype(skip_exceptions=skip_exceptions)
     consumer = CitationKafkaConsumer(message_processor=message_processor)
     try:
+        if startwith_items:
+            consumer.static_start(startwith_items)
+            
         consumer.start()
     except Exception as e:
         if healthcheck:

@@ -17,10 +17,6 @@ def poll_wdc_api(item_id: str):
         logger.error('No WDC API Mapping File provided.')
         return None
 
-    if not os.environ.get('WDC_API_MAPPING_FILE'):
-        logger.error('No WDC API Mapping File provided.')
-        return None
-
     mapping_file = os.environ.get('WDC_API_MAPPING_FILE')
     if not os.path.isfile(mapping_file):
         logger.error('WDC API Mapping File missing from filesystem.')
@@ -29,8 +25,11 @@ def poll_wdc_api(item_id: str):
     with open(mapping_file) as f:
         mappings = json.load(f)
 
-    # Mapping logic here
-    acronym = 'IFHISTL01'
+    match_map = '.'.join(item_id.split('.')[:9])
+    acronym = mappings.get(match_map)
+    if not acronym:
+        logger.error(f'No match for {match_map} in WDC API Mapping')
+        return None
 
     r = requests.get(f'https://www.wdc-climate.de/ui/cerarest/entry?acronym={acronym}')
     if r.status_code >= 300:
