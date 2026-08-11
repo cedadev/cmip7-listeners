@@ -12,7 +12,7 @@ logstream = logging.StreamHandler()
 formatter = logging.Formatter("%(levelname)s [%(name)s]: %(message)s")
 logstream.setFormatter(formatter)
 
-SUPPORTED_PROJECTS = ['CMIP7', 'CORDEX-CMIP6']
+SUPPORTED_PROJECTS = ['CMIP7', 'CORDEX-CMIP6','CMIP6Plus']
 
 SUCCESS_MESSAGE = {
         "data": {

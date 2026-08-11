@@ -106,7 +106,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         logger.info(f'{citation_url}: {response.status_code}')
         logger.info(response.content)
-        
+
         try:
             response.raise_for_status()
             return 200
@@ -155,6 +155,18 @@ class CitationMessageProcessor(MessageProcessor):
         ]
 
         return self.citation_url(cordex_facets, stac_info)
+
+    def cmip6plus_citation(self, stac_info: dict):
+
+        cmip6plus_facets = [
+            "cmip6plus:mip_era",
+            "cmip6plus:activity_id",
+            "cmip6plus:institution_id",
+            "cmip6plus:experiment_id",
+            "cmip6plus:source_id",
+        ]
+
+        return self.citation_url(cmip6plus_facets, stac_info)
     
     def cmip7_citation(self, stac_info: dict):
 
@@ -201,20 +213,24 @@ class CitationMessageProcessor(MessageProcessor):
         try:
             data    = message.value().decode("utf-8")
             payload = json.loads(data).get('data',{}).get('payload',None)
-        except:
+        except Exception as _:
             payload = message['data']['payload']
 
         if not payload:
             raise ValueError('Message contains no payload')
         
-        item_id = payload['item_id']
         collection = payload['collection_id']
 
-        logger.info(f'Assessing info for {item_id}')
-        
+        # From message poll to here should be minimised
         if collection not in SUPPORTED_PROJECTS:
-            logger.info(f'Skipped item: {item_id} - collection {collection} ignored')
             return
+
+        item_id = payload['item_id']
+
+        logger.info(f'Assessing info for {item_id}')
+
+        if collection == 'CMIP6Plus':
+            pass
 
         stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item_id}').json()
 
@@ -229,7 +245,8 @@ class CitationMessageProcessor(MessageProcessor):
         match collection:
             case 'CORDEX-CMIP6':
                 citation_url, facet_data = self.cordex_citation(stac_item)
-                
+            case 'CMIP6Plus':
+                citation_url, facet_data = self.cmip6plus_citation(stac_item)
             case _:
                 citation_url, facet_data = self.cmip7_citation(stac_item)
 
