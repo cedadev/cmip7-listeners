@@ -126,6 +126,9 @@ class CitationMessageProcessor(MessageProcessor):
         for facet in facet_labels:
             value = stac_info["properties"].get(facet)
 
+            if value is None:
+                raise ValueError(f'Required property "{facet}" missing from Item.')
+
             # Account for list or string properties - pick the first item only for use as citation DRS + facet
             if isinstance(value, list):
                 value = value[0]
