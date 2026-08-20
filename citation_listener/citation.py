@@ -281,7 +281,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         add = True
         for link in stac_item['links']:
-            if link['rel'] == 'citeas':
+            if link['rel'] == 'cite-as':
                 if link['href'] != citation_url:
                     logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
                 add = False
@@ -307,7 +307,7 @@ class CitationMessageProcessor(MessageProcessor):
             "value": {
                 "href": citation_url,
                 "type": "application/json",
-                "rel":"citeas"
+                "rel":"cite-as"
             }
         }]
 
