@@ -22,7 +22,8 @@ build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
 dev = [
-    "isort (>=8.0.1,<9.0.0)"
+    "isort (>=8.0.1,<9.0.0)",
+    "ruff (>=0.16.3,<0.17.0)"
 ]
 
 [project.scripts]

@@ -4,8 +4,8 @@ import time
 
 import click
 
-from ceda_c7listeners.citation import CitationKafkaConsumer, CitationMessageProcessor
-from ceda_c7listeners.utils import probe_fail, probe_success, raise_missing_env_errors
+from citation_listener.citation import CitationKafkaConsumer, CitationMessageProcessor
+from citation_listener.utils import probe_fail, probe_success, raise_missing_env_errors
 
 listeners = {"create_citations": CitationMessageProcessor}
 
