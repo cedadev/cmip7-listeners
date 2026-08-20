@@ -1,5 +1,5 @@
-# cmip7-listeners
-Package for CEDA CMIP7 Kafka Listeners.
+# citation-listener
+Package for CEDA Citation Kafka Listener.
 
 ## Citation Listener
 - Listens to Publisher Success queue.

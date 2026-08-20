@@ -1,5 +1,5 @@
 [project]
-name = "ceda-c7listeners"
+name = "citation-listener"
 version = "0.1.0"
 description = "CMIP7 Publication Producer/Listener for creating Aggregations and New Citations (PLANC)"
 authors = [
