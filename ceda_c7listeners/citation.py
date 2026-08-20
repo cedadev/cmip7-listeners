@@ -1,19 +1,17 @@
-import logging
-from typing import Any
 import json
+import logging
 import os
-import requests
 import time
+from typing import Any
 
 import httpx
-from confluent_kafka import Message as KafkaMessage
-from esgf_core_utils.models.kafka.message_processor import MessageProcessor
+import requests
 from esgf_core_utils.models.kafka.consumer import KafkaConsumer, KafkaException
-
+from esgf_core_utils.models.kafka.message_processor import MessageProcessor
 from httpx_auth import OAuth2ClientCredentials
 
-from .utils import logstream, SUPPORTED_PROJECTS
 from .external import poll_wdc_api
+from .utils import SUPPORTED_PROJECTS, logstream
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -30,16 +28,17 @@ class CitationKafkaConsumer(KafkaConsumer):
                 }
             }
             try:
-                _ = self.message_processor.ingest(message)
+                _ = self.message_processor.ingest(json.dumps(message))
             except Exception as e:
                 print(e)
+                raise
 
     def start(self) -> None:
         """Start consuming messages"""
         self.consumer.subscribe(self.settings.topics)
 
         try:
-            logging.info(
+            logger.info(
                 "Kafka consumer started. Subscribed to topics: %s",
                 self.settings.topics,
             )
@@ -48,41 +47,47 @@ class CitationKafkaConsumer(KafkaConsumer):
                 message = None
                 try:
                     message = self.consumer.poll(timeout=self.settings.timeout)
-                    logging.info(f"Kafka consuming message: {message}")
+                    logger.info(f"Kafka consuming message: {message}")
 
                     if message is None:
                         time.sleep(0.1)
                         continue
 
-                    commit = self.message_processor.ingest(message)
+                    commit = self.message_processor.ingest(
+                        message.value().decode('utf-8'))
 
                     if commit:
                         self.consumer.commit(message=message, asynchronous=False)
 
                 except KafkaException as e:
-                    logging.error("Kafka exception: %s", e)
-                    if os.environ.get("RAISE_ALL_INTERNAL_ERRORS",False):
-                        raise e
+                    logger.error("Kafka exception: %s", e)
+                    if bool(os.environ.get("RAISE_ALL_INTERNAL_ERRORS",'')):
+                        raise
+
+                except ConnectionError:
+                    # Always raise Citation Connection Issues
+                    raise
         
                 except Exception as e:
-                    logging.error("Other exception: %s", e)
-                    if os.environ.get("RAISE_ALL_INTERNAL_ERRORS",False):
-                        raise e
+                    logger.error("Other exception: %s", e)
+                    if bool(os.environ.get("RAISE_ALL_INTERNAL_ERRORS",'')):
+                        raise
 
-        except KeyboardInterrupt as e:
-            logging.info("Closing Kafka consumer")
+        except KeyboardInterrupt:
+            logger.info("Closing Kafka consumer")
 
             self.consumer.close()
 
-        except Exception as e:
-            raise e
+        except Exception:
+            raise
     
 
 class CitationMessageProcessor(MessageProcessor):
 
-    def __init__(self, skip_exceptions: bool = False):
+    def __init__(self, skip_exceptions: bool = False, allow_update_stac: bool = True):
 
         self.skip_exceptions = skip_exceptions
+        self.allow_update_stac = allow_update_stac
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
         self.citation_api_token = os.environ['CITATION_API_TOKEN']
@@ -127,13 +132,18 @@ class CitationMessageProcessor(MessageProcessor):
         except Exception as e:
             logger.error(f'Exception encountered: {e}')
             if not self.skip_exceptions:
-                raise e
+                raise
             return 500
 
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
+
         with httpx.Client(timeout=self.timeout, verify=False) as client:
-            return bool(client.get(citation_url).status_code == 200)
+            response = client.get(citation_url).status_code
+            if str(response.status) in ['503','504']:
+                logger.error(response.content)
+                raise ConnectionError(f'Received {response.status} from Citation Service')
+            return bool(str(response.status) == '200')
     
     def citation_url(self, facet_labels: list, stac_info: dict[str,Any]):
 
@@ -217,19 +227,18 @@ class CitationMessageProcessor(MessageProcessor):
     def has_citation_url(self, stac_info: dict):
         return False
 
-    def ingest(self, message: KafkaMessage | dict) -> None:
+    def ingest(self, data: str) -> None:
         """
-        Handle a message received from the kafka topic
+        Handle a message received from the kafka topic.
+
+        :param data: (str) JSON serialized kafka message (or static replacement for testing.)
         """
     
         # Pull the STAC item from the message into stac_item
-
-        try:
-            data    = message.value().decode("utf-8")
-            payload = json.loads(data).get('data',{}).get('payload',None)
-        except Exception as _:
-            payload = message['data']['payload']
-
+        if 'error' in data:
+            raise ValueError(data)
+        
+        payload = json.loads(data).get('data',{}).get('payload',None)
         if not payload:
             raise ValueError('Message contains no payload')
         
@@ -281,7 +290,7 @@ class CitationMessageProcessor(MessageProcessor):
         if status != 200:
             return False
 
-        if add:
+        if add and self.allow_update_stac:
             # If citation does exist, update the stac record if the citation_url is not present yet.
             self.update_stac(item_id, collection, citation_url)
         else:

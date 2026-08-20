@@ -1,6 +1,7 @@
-import os
-import logging
 import json
+import logging
+import os
+
 import requests
 
 from .utils import logstream

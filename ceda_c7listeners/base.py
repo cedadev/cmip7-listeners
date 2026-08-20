@@ -1,10 +1,11 @@
-import os
-import click
 import logging
+import os
 import time
 
-from ceda_c7listeners.citation import CitationMessageProcessor, CitationKafkaConsumer
-from ceda_c7listeners.utils import probe_success, probe_fail, raise_missing_env_errors
+import click
+
+from ceda_c7listeners.citation import CitationKafkaConsumer, CitationMessageProcessor
+from ceda_c7listeners.utils import probe_fail, probe_success, raise_missing_env_errors
 
 listeners = {"create_citations": CitationMessageProcessor}
 
@@ -20,14 +21,16 @@ def ping_citation_service():
     logger.info(f"Waiting to connect to {url}")
     try:
         r = requests.head(url, verify=False)
-    except Exception as _:
+    except Exception:
+        logger.exception(f'Failed to access {url}')
         return False
     return r.status_code == 200
 
 def listen(
         listener: str, healthcheck: str | None = None, 
         skip_exceptions: bool = False, 
-        startwith_items: list | None = None):
+        startwith_items: list | None = None,
+        allow_update_stac: bool = True):
 
     # Immediately mark as ready on setup - will change to fail if there are errors.
     if healthcheck:
@@ -61,26 +64,27 @@ def listen(
             probe_fail(healthcheck)
         raise ValueError('Could not establish connection to Citation Service in 100s')
 
-    message_processor = mptype(skip_exceptions=skip_exceptions)
+    message_processor = mptype(skip_exceptions=skip_exceptions, allow_update_stac=allow_update_stac)
     consumer = CitationKafkaConsumer(message_processor=message_processor)
     try:
         if startwith_items:
             consumer.static_start(startwith_items)
             
         consumer.start()
-    except Exception as e:
+    except Exception:
         if healthcheck:
             probe_fail(healthcheck)
-        raise e
+        raise
 
 
 @click.command()
 @click.argument("listener")
 @click.option("--healthcheck", help="path to healthcheck probe")
-@click.option('--skip_exceptions',is_flag=True)
-def main(listener: str, healthcheck: str | None, skip_exceptions: bool = False) -> None:
+def main(listener: str, healthcheck: str | None) -> None:
     """
     Set up a listener given a listener type and set of configurations."""
+
+    skip_exceptions = not bool(os.environ.get("RAISE_ALL_INTERNAL_ERRORS",''))
 
     listen(listener, healthcheck, skip_exceptions=skip_exceptions)
 

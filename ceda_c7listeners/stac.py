@@ -1,13 +1,13 @@
-import os
 import json
 import logging
-import requests 
+import os
+
 import click
+import requests
 
-from .utils import logstream
 from .citation import CitationMessageProcessor
-
-from .facet_mappings import ESGVOC_FACET_LABELS, STAC_LABELS, STAC_COLLECTIONS
+from .facet_mappings import ESGVOC_FACET_LABELS, STAC_COLLECTIONS, STAC_LABELS
+from .utils import logstream
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -22,7 +22,7 @@ def update_all(citations_file: str):
     """
 
     with open(citations_file) as f:
-        citations = [r.strip() for r in f.readlines()]
+        citations = [r.strip() for r in f]
 
     for citation in citations:
         update_stac_items(citation)
