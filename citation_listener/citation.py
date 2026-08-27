@@ -95,6 +95,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         self.citation_username = os.environ['CITATION_USERNAME']
         self.citation_password = os.environ['CITATION_PASSWORD']
+        self.timeout = 30
 
         if not self.citation_api_token:
             self.refresh_token()
@@ -104,7 +105,6 @@ class CitationMessageProcessor(MessageProcessor):
         self.stac_api_endpoint = os.environ['STAC_TRANSACTION_API']
 
         self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"}
-        self.timeout = 30
 
         self.stac_auth = OAuth2ClientCredentials(
             'https://aai.egi.eu/auth/realms/egi/protocol/openid-connect/token',
