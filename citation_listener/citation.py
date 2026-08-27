@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from typing import Any
+import base64
 
 import httpx
 import requests
@@ -10,8 +11,8 @@ from esgf_core_utils.models.kafka.consumer import KafkaConsumer, KafkaException
 from esgf_core_utils.models.kafka.message_processor import MessageProcessor
 from httpx_auth import OAuth2ClientCredentials
 
-from .external import poll_wdc_api
-from .utils import SUPPORTED_PROJECTS, logstream
+from citation_listener.external import poll_wdc_api
+from citation_listener.utils import SUPPORTED_PROJECTS, logstream
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -90,7 +91,13 @@ class CitationMessageProcessor(MessageProcessor):
         self.allow_update_stac = allow_update_stac
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
-        self.citation_api_token = os.environ['CITATION_API_TOKEN']
+        self.citation_api_token = os.environ.get('CITATION_API_TOKEN')
+
+        self.citation_username = os.environ['CITATION_USERNAME']
+        self.citation_password = os.environ['CITATION_PASSWORD']
+
+        if not self.citation_api_token:
+            self.refresh_token()
 
         self.citation_api_new = os.path.join(self.citation_base_url, 'citation/')
 
@@ -105,6 +112,59 @@ class CitationMessageProcessor(MessageProcessor):
             client_secret=os.environ['STAC_API_SECRET'],
             scope="entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu"
         )
+
+    def refresh_token(self):
+        """
+        Obtain new or existing token from the citation service.
+
+        This will occur every time the pause cycle triggers, where
+        the listener is instructed to pause from the citation service.
+        """
+
+        logger.info('Obtaining API token from citation service')
+        
+        userpass = f'{self.citation_username}:{self.citation_password}'
+        header = f'Basic {base64.b64encode(userpass.encode()).decode('utf-8')}'
+
+        with httpx.Client(timeout=self.timeout, verify=False) as client:
+            response = client.post(
+                url = os.path.join(self.citation_base_url, 'superuser_token',''), 
+                headers={'Authorization':header}
+            )
+
+            if str(response.status_code) != '200':
+                raise ConnectionError(f'Received {response.status_code} from Citation Service')
+
+            self.citation_api_token = response.json().get('token')
+
+    def cycle_pause(self, check_url):
+        """
+        Remain paused in this loop until the citation service shows unpaused."""
+
+        logger.info('Received instruction to pause. Entering pause cycle...')
+
+        stay_paused = True
+
+        while stay_paused:
+            logger.info('Polling citation service...')
+            with httpx.Client(timeout=self.timeout, verify=False) as client:
+                response = client.get(check_url)
+    
+                if str(response.status_code) in ['503','504']:
+                    logger.error(response.content)
+                    raise ConnectionError(f'Received {response.status_code} from Citation Service')
+    
+                if not response.json().get('pause', False):
+                    stay_paused = False
+                else:
+                    # Re-check every 10 minutes
+                    time.sleep(10)
+                    
+
+        logger.info('Pause cycle complete.')
+
+        self.refresh_token()
+
 
     def post_citation(self, citation_url: str, citation_data: dict[str, Any]) -> None:
         """
@@ -138,12 +198,22 @@ class CitationMessageProcessor(MessageProcessor):
     def citation_exists(self, citation_url: str) -> bool:
         """Check if a citation exists."""
 
+        check_url = citation_url.replace(
+            'citation','listener_check').replace(
+                '?httpAccept=application/json','/'
+            )
+
         with httpx.Client(timeout=self.timeout, verify=False) as client:
-            response = client.get(citation_url).status_code
-            if str(response.status) in ['503','504']:
+            response = client.get(check_url)
+
+            if str(response.status_code) in ['503','504']:
                 logger.error(response.content)
-                raise ConnectionError(f'Received {response.status} from Citation Service')
-            return bool(str(response.status) == '200')
+                raise ConnectionError(f'Received {response.status_code} from Citation Service')
+
+            if response.json().get('pause', False):
+                self.cycle_pause(check_url)
+
+            return bool(str(response.status_code) == '200')
     
     def citation_url(self, facet_labels: list, stac_info: dict[str,Any]):
 
