@@ -27,5 +27,5 @@ dev = [
 ]
 
 [project.scripts]
-public_listen = "citation-listener.base:main"
-update_citations = "citation-listener.stac:update_all"
+public_listen = "citation_listener.base:main"
+update_citations = "citation_listener.stac:update_all"
