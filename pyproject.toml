@@ -27,5 +27,5 @@ dev = [
 ]
 
 [project.scripts]
-public_listen = "ceda_c7listeners.base:main"
-update_citations = "ceda_c7listeners.stac:update_all"
+public_listen = "citation-listener.base:main"
+update_citations = "citation-listener.stac:update_all"
