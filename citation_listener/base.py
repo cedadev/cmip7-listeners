@@ -80,7 +80,7 @@ def listen(
 @click.command()
 @click.argument("listener")
 @click.option("--healthcheck", help="path to healthcheck probe")
-@click.option("--stac", "allow_updates_to_stac", help="allow updates to STAC index", is_flag=True, default=False)
+@click.option("--stac", "allow_update_stac", help="allow updates to STAC index", is_flag=True, default=False)
 @click.option("--raise", "raise_exceptions", help="Raise all internal errors", is_flag=True, default=False)
 def main(listener: str, healthcheck: str | None, allow_update_stac: bool = False, raise_exceptions: bool = False) -> None:
     """
