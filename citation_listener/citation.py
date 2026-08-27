@@ -199,7 +199,7 @@ class CitationMessageProcessor(MessageProcessor):
         """Check if a citation exists."""
 
         check_url = citation_url.replace(
-            'citation','listener_check').replace(
+            '/citation','/listener_check').replace(
                 '?httpAccept=application/json','/'
             )
 
