@@ -95,7 +95,8 @@ class CitationMessageProcessor(MessageProcessor):
 
         self.citation_username = os.environ['CITATION_USERNAME']
         self.citation_password = os.environ['CITATION_PASSWORD']
-        self.timeout = 30
+        self.pause_delay = int(os.environ.get('PAUSE_DELAY',"30"))
+        self.timeout     = int(os.environ.get('REQUEST_TIMEOUT',"30"))
 
         if not self.citation_api_token:
             self.refresh_token()
@@ -158,7 +159,7 @@ class CitationMessageProcessor(MessageProcessor):
                     stay_paused = False
                 else:
                     # Re-check every 10 minutes
-                    time.sleep(10)
+                    time.sleep(self.pause_delay)
                     
 
         logger.info('Pause cycle complete.')
