@@ -80,13 +80,13 @@ def listen(
 @click.command()
 @click.argument("listener")
 @click.option("--healthcheck", help="path to healthcheck probe")
-def main(listener: str, healthcheck: str | None) -> None:
+@click.option("--stac", "allow_updates_to_stac", help="allow updates to STAC index", is_flag=True, default=False)
+@click.option("--raise", "raise_exceptions", help="Raise all internal errors", is_flag=True, default=False)
+def main(listener: str, healthcheck: str | None, allow_update_stac: bool = False, raise_exceptions: bool = False) -> None:
     """
     Set up a listener given a listener type and set of configurations."""
 
-    skip_exceptions = not bool(os.environ.get("RAISE_ALL_INTERNAL_ERRORS",''))
-
-    listen(listener, healthcheck, skip_exceptions=skip_exceptions)
+    listen(listener, healthcheck, skip_exceptions= not raise_exceptions, allow_update_stac=allow_update_stac)
 
 if __name__ == "__main__":
     main()
