@@ -395,6 +395,8 @@ class CitationMessageProcessor(MessageProcessor):
 
         stac_url = f"{self.stac_api_endpoint}collections/{stac_collection}/items/{stac_id}"
 
+        logger.info(f"Updating STAC: {stac_url}")
+
         with httpx.Client(verify=False) as client:
             response = client.patch(
                 url=stac_url,
