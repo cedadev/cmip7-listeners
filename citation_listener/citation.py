@@ -47,8 +47,9 @@ class CitationKafkaConsumer(KafkaConsumer):
             while True:
                 message = None
                 try:
+                    # Reduce logs by not acknowledging messages until we confirm
+                    # they are one of the supported projects
                     message = self.consumer.poll(timeout=self.settings.timeout)
-                    logger.info(f"Kafka consuming message: {message}")
 
                     if message is None:
                         time.sleep(0.1)
