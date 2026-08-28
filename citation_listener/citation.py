@@ -393,7 +393,10 @@ class CitationMessageProcessor(MessageProcessor):
             }
         }]
 
-        stac_url = f"{self.stac_api_endpoint}collections/{stac_collection}/items/{stac_id}"
+        stac_url = os.path.join(
+            self.stac_api_endpoint,
+            f'collections/{stac_collection}/items/{stac_id}'
+        )
 
         logger.info(f"Updating STAC: {stac_url}")
 
