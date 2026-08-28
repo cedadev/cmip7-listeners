@@ -85,9 +85,9 @@ class CitationKafkaConsumer(KafkaConsumer):
 
 class CitationMessageProcessor(MessageProcessor):
 
-    def __init__(self, skip_exceptions: bool = False, allow_update_stac: bool = True):
+    def __init__(self, allow_update_stac: bool = True):
 
-        self.skip_exceptions = skip_exceptions
+        self.skip_exceptions = os.environ.get("RAISE_ALL_INTERNAL_ERRORS")
         self.allow_update_stac = allow_update_stac
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
@@ -249,7 +249,16 @@ class CitationMessageProcessor(MessageProcessor):
             "cordex-cmip6:source_id",
         ]
 
-        return self.citation_url(cordex_facets, stac_info)
+        license = "CORDEX is a programme of the World Climate Research Programme (WCRP),"\
+            " coordinated under the umbrella of the Regional Information for Society (RIfS)"\
+            " Core Project. CORDEX-CMIP6 builds on the work of the 6th phase of the Coupled"\
+            " Model Intercomparison Project (CMIP6) and the European Centre for Medium-Range"\
+            " Weather Forecasts (ECMWF) ERA5 reanalysis and relies on the Earth System Grid" \
+            " Federation (ESGF) and the Centre for Environmental Data Analysis (CEDA) along" \
+            " with numerous related activities for implementation. Published under CC-BY-4.0."
+
+        citation_url, facet_values = self.citation_url(cordex_facets, stac_info)
+        return citation_url, facet_values, {'license':license}
 
     def cmip6plus_citation(self, stac_info: dict):
 
@@ -261,7 +270,8 @@ class CitationMessageProcessor(MessageProcessor):
             "cmip6plus:experiment_id",
         ]
 
-        return self.citation_url(cmip6plus_facets, stac_info)
+        citation_url, facet_values = self.citation_url(cmip6plus_facets, stac_info)
+        return citation_url, facet_values, {}
     
     def cmip7_citation(self, stac_info: dict):
 
@@ -273,7 +283,8 @@ class CitationMessageProcessor(MessageProcessor):
             "cmip7:experiment_id",
         ]
 
-        return self.citation_url(cmip7_facets, stac_info)
+        citation_url, facet_values = self.citation_url(cmip7_facets, stac_info)
+        return citation_url, facet_values, {}
     
     def get_author_info(self, facets: dict, collection: str, item_id: str) -> dict:
         """
@@ -338,13 +349,13 @@ class CitationMessageProcessor(MessageProcessor):
 
         match collection:
             case 'CORDEX-CMIP6':
-                citation_url, facet_data = self.cordex_citation(stac_item)
+                citation_url, facet_data, extra_data = self.cordex_citation(stac_item)
             case 'CMIP6Plus':
-                citation_url, facet_data = self.cmip6plus_citation(stac_item)
+                citation_url, facet_data, extra_data = self.cmip6plus_citation(stac_item)
             case _:
-                citation_url, facet_data = self.cmip7_citation(stac_item)
+                citation_url, facet_data, extra_data = self.cmip7_citation(stac_item)
 
-        citation_data = facet_data | self.get_author_info(facet_data, collection, item_id) | facet_data
+        citation_data = facet_data | self.get_author_info(facet_data, collection, item_id) | extra_data
 
         status = 200
         if not self.citation_exists(citation_url):
@@ -369,7 +380,6 @@ class CitationMessageProcessor(MessageProcessor):
 
         return True
         
-
     def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):
         
         payload = [{
