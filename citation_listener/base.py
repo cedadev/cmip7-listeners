@@ -24,6 +24,7 @@ def ping_service(url):
     logger.info(f"Waiting to connect to {url}")
     try:
         r = requests.head(url, verify=False)
+        logger.info(f' > Received: {r.status_code} {r.content}')
     except Exception:
         logger.exception(f'Failed to access {url}')
         return False
