@@ -30,10 +30,7 @@ dev = [
 # General listener command for kafka listening
 public_listen = "citation_listener.base:main"
 
-# Update STAC records based on existing citations - file input needed
-update_citations = "citation_listener.stac:update_all"
-
-# Patch Failed Citations from the service into STAC - similar to the above but with different input
+# Patch Citations from local list, failed list in service or both.
 patch_citations = "citation_listener.patch:patch_citations"
 
 # Patch missing cite-as links across ALL items in supported projects.
