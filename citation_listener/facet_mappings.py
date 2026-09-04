@@ -1,4 +1,7 @@
-from django.conf import settings
+try:
+    from django.conf import settings
+except Exception as _:
+    settings = None
 
 CORDEX_FACETS = {
     "project_id": "project_id",
@@ -47,7 +50,8 @@ STAC_LABELS = {"driving_experiment_id": "driving_experiment_id"}
 STAC_COLLECTIONS = {
     'cmip7':'CMIP7',
     'cmip6':'CMIP6',
-    'cordex-cmip6':'CORDEX-CMIP6'
+    'cordex-cmip6':'CORDEX-CMIP6',
+    'cmip6plus': 'CMIP6Plus'
 }
 
 # Mapping internal database facets to the User-facing view pages.
@@ -70,10 +74,12 @@ ESGVOC_TITLE_LABELS = {
     "cmip6plus": CMIP_TITLE_ORDER,
 }
 
-BACKUP_REPOS = {
-    "cmip7": getattr(settings, "CV_REPO", None),
-    "cordex-cmip6": getattr(settings, "CORDEX_CV_REPO", None),
-}
+BACKUP_REPOS = {}
+if settings is not None:
+    BACKUP_REPOS = {
+        "cmip7": getattr(settings, "CV_REPO", None),
+        "cordex-cmip6": getattr(settings, "CORDEX_CV_REPO", None),
+    }
 
 # All labels to use based on labels applied to the facets in different project IDs
 FACET_ABSTRACT_DESCRIPTIONS = {

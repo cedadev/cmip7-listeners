@@ -12,7 +12,7 @@ from esgf_core_utils.models.kafka.message_processor import MessageProcessor
 from httpx_auth import OAuth2ClientCredentials
 
 from citation_listener.external import poll_wdc_api
-from citation_listener.utils import SUPPORTED_PROJECTS, logstream
+from citation_listener.utils import SUPPORTED_PROJECTS, logstream, cite_as_needed
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -44,6 +44,7 @@ class CitationKafkaConsumer(KafkaConsumer):
                 self.settings.topics,
             )
 
+            logged = 0
             while True:
                 message = None
                 try:
@@ -55,8 +56,17 @@ class CitationKafkaConsumer(KafkaConsumer):
                         time.sleep(0.1)
                         continue
 
-                    commit = self.message_processor.ingest(
+                    commit, processed = self.message_processor.ingest(
                         message.value().decode('utf-8'))
+
+                    if processed:
+                        logged = 0
+                    else:
+                        logged += 1
+
+                    if logged > 1000:
+                        logged = 0
+                        logger.info('Silently skipped 100 messages - no action needed')
 
                     if commit:
                         self.consumer.commit(message=message, asynchronous=False)
@@ -310,7 +320,7 @@ class CitationMessageProcessor(MessageProcessor):
     def has_citation_url(self, stac_info: dict):
         return False
 
-    def ingest(self, data: str) -> None:
+    def ingest(self, data: str) -> tuple: # Commit, logged something
         """
         Handle a message received from the kafka topic.
 
@@ -329,7 +339,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         # From message poll to here should be minimised
         if collection not in SUPPORTED_PROJECTS:
-            return True
+            return True, False
 
         item_id = payload['item_id']
 
@@ -342,11 +352,11 @@ class CitationMessageProcessor(MessageProcessor):
 
         if 'type' not in stac_item:
             logger.info(f'Error: Failed to fetch item: {item_id} from {collection}')
-            return False
+            return False, True
         
         if self.has_citation_url(stac_item):
             # No further action required
-            return True
+            return True, True
 
         match collection:
             case 'CORDEX-CMIP6':
@@ -362,16 +372,10 @@ class CitationMessageProcessor(MessageProcessor):
         if not self.citation_exists(citation_url):
             status = self.post_citation(citation_url, citation_data)
 
-        add = True
-        for link in stac_item['links']:
-            if link['rel'] == 'cite-as':
-                if link['href'] != citation_url:
-                    logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
-                add = False
-                break
+        add = cite_as_needed(stac_item, citation_url)
 
         if status != 200:
-            return False
+            return False, True
 
         if add and self.allow_update_stac:
             # If citation does exist, update the stac record if the citation_url is not present yet.
@@ -379,7 +383,7 @@ class CitationMessageProcessor(MessageProcessor):
         else:
             logger.info(f'Skipped pre-existing citation for STAC item {item_id}')
 
-        return True
+        return True, True
         
     def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):
         
@@ -400,7 +404,7 @@ class CitationMessageProcessor(MessageProcessor):
 
         logger.info(f"Updating STAC: {stac_url}")
 
-        with httpx.Client(verify=False) as client:
+        with httpx.Client(timeout=self.timeout,verify=False) as client:
             response = client.patch(
                 url=stac_url,
                 auth=self.stac_auth,

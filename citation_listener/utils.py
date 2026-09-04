@@ -12,6 +12,10 @@ logstream = logging.StreamHandler()
 formatter = logging.Formatter("%(levelname)s [%(name)s]: %(message)s")
 logstream.setFormatter(formatter)
 
+logger = logging.getLogger(__name__)
+logger.addHandler(logstream)
+logger.propagate = False
+
 SUPPORTED_PROJECTS = ['CMIP7', 'CORDEX-CMIP6','CMIP6Plus']
 
 SUCCESS_MESSAGE = {
@@ -151,6 +155,17 @@ ENVIRONMENT_REQUIREMENTS = [
     "CITATION_USERNAME",
     "CITATION_PASSWORD"
 ]
+
+def cite_as_needed(stac_item: dict, citation_url: str) -> bool:
+    add = True
+    for link in stac_item['links']:
+        if link['rel'] == 'cite-as':
+            if link['href'] != citation_url:
+                logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
+            add = False
+            break
+    return add
+
 
 def probe_success(healthcheck: str) -> None:
 
