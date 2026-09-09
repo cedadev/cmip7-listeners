@@ -413,3 +413,56 @@ class CitationMessageProcessor(MessageProcessor):
             
         logger.info(f'{stac_url}: {response.status_code}')
         logger.info(response.content)
+
+def get_all_items(
+        stac_query: str, 
+        first_only: bool = False,
+        count_missing_only: bool = False,
+        instant_process: CitationMessageProcessor | None = None) -> list:
+    """
+    Identify all STAC items corresponding to a query.
+    
+    May return just one item in a list or all items.
+    May also return no items if items are processed instantly.
+    """
+
+    resp = requests.get(stac_query).json()
+    count = 0
+
+    item_payloads = []
+    has_next = True
+    while has_next:
+
+        logger.debug(f'Querying: {stac_query}')
+
+        items = [
+            {
+                'item_id':item['id'],
+                'collection_id': item['collection']}
+            for item in resp['features']]
+
+        if count:
+            count += len([item for item in resp['features'] if cite_as_needed(item, None)])
+
+        # Instantly process the STAC item 
+        if instant_process is not None:
+            for item in items:
+
+                # Reprocess all items - only ones needing a cite-as
+                # link will actually be reprocessed.
+                instant_process.ingest(json.dumps(item))
+        else:
+            item_payloads += items
+
+        has_next = ('next' in [link['rel'] for link in resp['links']])
+        if has_next:
+            stac_query = next(link['href'] for link in resp['links'] if link['rel'] == 'next')
+            resp = requests.get(stac_query).json()
+
+        if first_only:
+            has_next = False
+            item_payloads = item_payloads[:1]
+
+    if count_missing_only:
+        return count
+    return item_payloads

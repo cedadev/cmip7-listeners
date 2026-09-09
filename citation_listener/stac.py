@@ -1,39 +1,44 @@
 import json
 import logging
 import os
+import click
 
-from .facet_mappings import ESGVOC_FACET_LABELS, STAC_COLLECTIONS, STAC_LABELS
-from .utils import logstream
+from citation_listener.citation import CitationMessageProcessor, get_all_items
+
+from citation_listener.utils import logstream, SUPPORTED_PROJECTS, set_verbose
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
 logger.propagate = False
 
-
-def build_query_url(stac_api: str, data: dict):
+@click.command
+@click.argument('collections', type=str)
+@click.option('--count-only', is_flag=True)
+@click.option('--process', is_flag=True)
+@click.option('-v','--verbose', count=True)
+def patch_stac(collections: str, count_only: bool, process: bool, verbose: int):
     """
-    Obtain the valid STAC query that should yield datasets for this record
-    """
+    Update STAC items across ALL projects where 
+    cite-as links are missing."""
 
-    project_id = data["project_id"].lower()
-    
-    query = {}
-    for label, facet in ESGVOC_FACET_LABELS[project_id].items():
-        if data.get(facet, None) is None:
-            return False
-        
-        if facet == 'project_id':
-            continue
+    set_verbose(verbose)
 
-        query[
-            f'{project_id}:{STAC_LABELS.get(label,facet)}'
-        ] = {'eq':data[facet]}
+    stac_api = os.environ['STAC_TRANSACTION_API']
 
-    query_url = f'{os.path.join(stac_api,'search')}?collections={STAC_COLLECTIONS[project_id]}'
+    mp = None
+    if process:
+        mp = CitationMessageProcessor()
 
-    query_url += f'&query={json.dumps(query)}'
+    all_collections = SUPPORTED_PROJECTS
+    if collections != 'all':
+        all_collections = [collections]
 
-    # Remove whitespaces
-    query_url = query_url.replace(' ','')
-    return query_url
+    for collection in all_collections:
+        c = get_all_items(
+            os.path.join(stac_api, f'collections/{collection}/items'),
+            instant_process=mp,
+            count_missing_only=count_only
+        )
 
+        if count_only:
+            print(f'{collection}: missing cite-as: {c}')

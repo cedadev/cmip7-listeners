@@ -7,10 +7,9 @@ import requests
 import click
 
 from citation_listener.facet_mappings import CMIP_TITLE_ORDER, CORDEX_TITLE_ORDER
-from citation_listener.stac import build_query_url
-from citation_listener.citation import CitationMessageProcessor
+from citation_listener.citation import CitationMessageProcessor, get_all_items
 
-from citation_listener.utils import logstream, SUPPORTED_PROJECTS
+from citation_listener.utils import logstream, build_query_url
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -38,50 +37,6 @@ def reverse_id(id: str, facets: list):
     for x, facet in enumerate(facets):
         data[facet] = id.split('.')[x]
     return data
-
-def get_all_items(
-        stac_query: str, 
-        first_only: bool = False, 
-        instant_process: CitationMessageProcessor | None = None) -> list:
-    """
-    Identify all STAC items corresponding to a query.
-    
-    May return just one item in a list or all items.
-    May also return no items if items are processed instantly.
-    """
-
-    resp = requests.get(stac_query).json()
-
-    item_payloads = []
-    has_next = True
-    while has_next:
-
-        items = [
-            {
-                'item_id':item['id'],
-                'collection_id': item['collection']}
-            for item in resp['features']]
-
-        # Instantly process the STAC item 
-        if instant_process is not None:
-            for item in items:
-
-                # Reprocess all items - only ones needing a cite-as
-                # link will actually be reprocessed.
-                instant_process.ingest(json.dumps(item))
-        else:
-            item_payloads += items
-
-        has_next = ('next' in [link['rel'] for link in resp['links']])
-        if has_next:
-            resp = requests.get(
-                next(link['href'] for link in resp['links'] if link['rel'] == 'next')).json()
-
-        if first_only:
-            has_next = False
-            item_payloads = item_payloads[:1]
-
-    return item_payloads
 
 def retry_all_items(items: list, mp:  CitationMessageProcessor):
     """
@@ -120,29 +75,11 @@ def reprocess_citations(
 
     retry_all_items(all_items, mp)
 
-def patch_stac():
-    """
-    Update STAC items across ALL projects where 
-    cite-as links are missing."""
-
-    stac_api = os.environ['STAC_TRANSACTION_API']
-
-    mp = CitationMessageProcessor()
-
-    for collection in SUPPORTED_PROJECTS:
-        get_all_items(
-            os.path.join(stac_api, f'collections/{collection}/items'),
-            instant_process=mp
-        )
-
-@click.command()
-@click.argument("citations_file")
-@click.option("--stac", "allow_update_stac", help="allow updates to STAC index", is_flag=True, default=False)
-@click.option("--failed", "update_failed", help="Patch failed items", is_flag=True, default=False)
-def patch_citations(
+def patch_citations_main(
     citations_file_or_additions: list | str | None, 
     allow_update_stac: bool = False, 
     update_failed: bool = False):
+
 
     additions = []
     if isinstance(citations_file_or_additions, str):
@@ -162,3 +99,18 @@ def patch_citations(
         logger.info('No citations identified to patch')
 
     reprocess_citations(additions, mp, allow_update_stac=allow_update_stac)
+
+
+@click.command()
+@click.argument("citations_file")
+@click.option("--stac", "allow_update_stac", help="allow updates to STAC index", is_flag=True, default=False)
+@click.option("--failed", "update_failed", help="Patch failed items", is_flag=True, default=False)
+def patch_citations(
+    citations_file_or_additions: list | str | None, 
+    allow_update_stac: bool = False, 
+    update_failed: bool = False):
+
+    patch_citations_main(
+        citations_file_or_additions, 
+        allow_update_stac=allow_update_stac,
+        update_failed=update_failed)
