@@ -1,5 +1,8 @@
 import logging
 import os
+import json
+
+from citation_listener.facet_mappings import ESGVOC_FACET_LABELS, STAC_LABELS, STAC_COLLECTIONS
 
 DEBUG = bool(os.environ.get("DEBUG"))
 
@@ -156,11 +159,59 @@ ENVIRONMENT_REQUIREMENTS = [
     "CITATION_PASSWORD"
 ]
 
-def cite_as_needed(stac_item: dict, citation_url: str) -> bool:
+def set_verbose(level: int):
+    """
+    Reset the logger basic config.
+    """
+
+    levels = [
+        logging.WARNING,
+        logging.INFO,
+        logging.DEBUG,
+    ]
+
+    if level >= len(levels):
+        level = len(levels) - 1
+
+    for name in logging.root.manager.loggerDict:
+        if "citation_listener" in name:
+            lg = logging.getLogger(name)
+            lg.setLevel(levels[level])
+
+def build_query_url(stac_api: str, data: dict):
+    """
+    Obtain the valid STAC query that should yield datasets for this record
+    """
+
+    project_id = data["project_id"].lower()
+    
+    query = {}
+    for label, facet in ESGVOC_FACET_LABELS[project_id].items():
+        if data.get(facet, None) is None:
+            return False
+        
+        if facet == 'project_id':
+            continue
+
+        query[
+            f'{project_id}:{STAC_LABELS.get(label,facet)}'
+        ] = {'eq':data[facet]}
+
+    query_url = f'{os.path.join(stac_api,'search')}?collections={STAC_COLLECTIONS[project_id]}'
+
+    query_url += f'&query={json.dumps(query)}'
+
+    # Remove whitespaces
+    query_url = query_url.replace(' ','')
+    return query_url
+
+
+
+def cite_as_needed(stac_item: dict, citation_url: str | None) -> bool:
     add = True
     for link in stac_item['links']:
         if link['rel'] == 'cite-as':
-            if link['href'] != citation_url:
+            if citation_url is not None and link['href'] != citation_url:
                 logger.error(f"STAC Item already has citation at: {link['href']} - new citation would be {citation_url}")
             add = False
             break

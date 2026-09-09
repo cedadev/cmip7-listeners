@@ -34,7 +34,8 @@ def poll_wdc_api(item_id: str):
 
     r = requests.get(f'https://www.wdc-climate.de/ui/cerarest/entry?acronym={acronym}')
     if r.status_code >= 300:
-        logger.error('WDC API not available.')
+        logger.error(f'WDC API not available - {acronym}')
+        logger.error(r.content)
         return None
 
     contacts = r.json()['contact']
