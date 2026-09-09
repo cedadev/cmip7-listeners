@@ -64,7 +64,7 @@ class CitationKafkaConsumer(KafkaConsumer):
                     else:
                         logged += 1
 
-                    if logged > 1000:
+                    if logged > 100:
                         logged = 0
                         logger.info('Silently skipped 100 messages - no action needed')
 

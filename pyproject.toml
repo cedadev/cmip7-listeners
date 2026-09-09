@@ -34,4 +34,4 @@ public_listen = "citation_listener.base:main"
 patch_citations = "citation_listener.patch:patch_citations"
 
 # Patch missing cite-as links across ALL items in supported projects.
-patch_stac = "citation_listener.patch:patch_stac"
+patch_stac = "citation_listener.stac:patch_stac"
