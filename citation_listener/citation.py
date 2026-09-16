@@ -110,7 +110,7 @@ class STACItemUpdater:
 
         self.stac_auth = OAuth2ClientCredentials(
             'https://aai.egi.eu/auth/realms/egi/protocol/openid-connect/token',
-            client_id='ae695f1b-3120-400b-a870-6e951c3356fd',
+            client_id=os.environ['STAC_CLIENT_ID'],
             client_secret=os.environ['STAC_API_SECRET'],
             scope="entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu"
         )
