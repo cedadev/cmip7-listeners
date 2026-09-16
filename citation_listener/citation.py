@@ -4,6 +4,7 @@ import os
 import time
 from typing import Any
 import base64
+from datetime import datetime, timezone
 
 import httpx
 import requests
@@ -13,6 +14,7 @@ from httpx_auth import OAuth2ClientCredentials
 
 from citation_listener.external import poll_wdc_api
 from citation_listener.utils import SUPPORTED_PROJECTS, logstream, cite_as_needed
+from citation_listener.facet_mappings import LICENSES
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
@@ -92,30 +94,18 @@ class CitationKafkaConsumer(KafkaConsumer):
 
         except Exception:
             raise
-    
 
-class CitationMessageProcessor(MessageProcessor):
+
+class STACItemUpdater:
 
     def __init__(self, allow_update_stac: bool = True):
 
-        self.skip_exceptions = os.environ.get("RAISE_ALL_INTERNAL_ERRORS")
-        self.allow_update_stac = allow_update_stac
-
-        self.citation_base_url = os.environ['CITATION_BASE_URL']
-        self.citation_api_token = os.environ.get('CITATION_API_TOKEN')
-
-        self.citation_username = os.environ['CITATION_USERNAME']
-        self.citation_password = os.environ['CITATION_PASSWORD']
-        self.pause_delay = int(os.environ.get('PAUSE_DELAY',"30"))
         self.timeout     = int(os.environ.get('REQUEST_TIMEOUT',"30"))
 
-        if not self.citation_api_token:
-            self.refresh_token()
-
-        self.citation_api_new = os.path.join(self.citation_base_url, 'citation/')
+        self.allow_update_stac = allow_update_stac
 
         self.stac_api_endpoint = os.environ['STAC_TRANSACTION_API']
-
+        
         self.stac_headers = {"User-Agent": "citation_listener/0.1.0", "Content-Type": "application/json-patch+json"}
 
         self.stac_auth = OAuth2ClientCredentials(
@@ -124,6 +114,93 @@ class CitationMessageProcessor(MessageProcessor):
             client_secret=os.environ['STAC_API_SECRET'],
             scope="entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu"
         )
+
+    # def test_add_asset(self, stac_id: str, stac_collection: str):
+
+    #     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    #     payload = [{
+    #         "op":"add",
+    #         'path':'/assets/reference_file',
+    #         'value':{
+    #             'href':'https://dap.ceda.ac.uk/badc/cmip6/metadata/aggregations/cfa/ScenarioMIP/MOHC/UKESM1-1-LL/cr1.0/CMIP6.ScenarioMIP.MOHC.UKESM1-1-LL.ssp370.r1i1p1f2.Amon.tas.gn.v20220512.cr1.0.nca',
+    #             'type':"application/netcdf",
+    #             'role': ["data", "virtual"],
+    #             'description': 'Kerchunk reference file for virtual aggregation.',
+    #             "created": now,
+    #             "updated": now,
+    #             "protocol": 'https',
+    #             'file:size': 51178
+    #         }
+    #     }]
+
+    #     stac_url = os.path.join(
+    #         self.stac_api_endpoint,
+    #         f'collections/{stac_collection}/items/{stac_id}'
+    #     )
+
+    #     logger.info(f"Updating STAC: {stac_url}")
+
+    #     with httpx.Client(timeout=self.timeout,verify=False) as client:
+    #         response = client.patch(
+    #             url=stac_url,
+    #             auth=self.stac_auth,
+    #             json=payload,
+    #             headers=self.stac_headers)
+            
+    #     logger.info(f'{stac_url}: {response.status_code}')
+    #     logger.info(response.content)
+
+
+    def update_stac_links(self, stac_id: str, stac_collection: str, citation_url: str):
+            
+        payload = [{
+            "op":"add",
+            "path": "/links/-",
+            "value": {
+                "href": citation_url,
+                "type": "application/json",
+                "rel":"cite-as"
+            }
+        }]
+
+        stac_url = os.path.join(
+            self.stac_api_endpoint,
+            f'collections/{stac_collection}/items/{stac_id}'
+        )
+
+        logger.info(f"Updating STAC: {stac_url}")
+
+        with httpx.Client(timeout=self.timeout,verify=False) as client:
+            response = client.patch(
+                url=stac_url,
+                auth=self.stac_auth,
+                json=payload,
+                headers=self.stac_headers)
+            
+        logger.info(f'{stac_url}: {response.status_code}')
+        logger.info(response.content)
+    
+
+class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
+
+    def __init__(self, allow_update_stac: bool = True):
+
+        self.skip_exceptions = os.environ.get("RAISE_ALL_INTERNAL_ERRORS")
+
+        self.citation_base_url = os.environ['CITATION_BASE_URL']
+        self.citation_api_token = os.environ.get('CITATION_API_TOKEN')
+
+        self.citation_username = os.environ['CITATION_USERNAME']
+        self.citation_password = os.environ['CITATION_PASSWORD']
+        self.pause_delay = int(os.environ.get('PAUSE_DELAY',"30"))
+
+        if not self.citation_api_token:
+            self.refresh_token()
+
+        self.citation_api_new = os.path.join(self.citation_base_url, 'citation/')
+
+        super().__init__(allow_update_stac)
 
     def refresh_token(self):
         """
@@ -260,14 +337,7 @@ class CitationMessageProcessor(MessageProcessor):
             "cordex-cmip6:source_id",
         ]
 
-        license = "CORDEX is a programme of the World Climate Research Programme (WCRP),"\
-            " coordinated under the umbrella of the Regional Information for Society (RIfS)"\
-            " Core Project. CORDEX-CMIP6 builds on the work of the 6th phase of the Coupled"\
-            " Model Intercomparison Project (CMIP6) and the European Centre for Medium-Range"\
-            " Weather Forecasts (ECMWF) ERA5 reanalysis and relies on the Earth System Grid" \
-            " Federation (ESGF) and the Centre for Environmental Data Analysis (CEDA) along" \
-            " with numerous related activities for implementation. Published under CC-BY-4.0."
-
+        license = LICENSES['CORDEX-CMIP6']
         citation_url, facet_values = self.citation_url(cordex_facets, stac_info)
         return citation_url, facet_values, {'license':license}
 
@@ -281,8 +351,9 @@ class CitationMessageProcessor(MessageProcessor):
             "cmip6plus:experiment_id",
         ]
 
+        license = LICENSES['CMIP6Plus']
         citation_url, facet_values = self.citation_url(cmip6plus_facets, stac_info)
-        return citation_url, facet_values, {}
+        return citation_url, facet_values, {'license':license}
     
     def cmip7_citation(self, stac_info: dict):
 
@@ -293,9 +364,9 @@ class CitationMessageProcessor(MessageProcessor):
             "cmip7:source_id",
             "cmip7:experiment_id",
         ]
-
+        license = LICENSES['CMIP7']
         citation_url, facet_values = self.citation_url(cmip7_facets, stac_info)
-        return citation_url, facet_values, {}
+        return citation_url, facet_values, {'license':license}
     
     def get_author_info(self, facets: dict, collection: str, item_id: str) -> dict:
         """
@@ -379,40 +450,11 @@ class CitationMessageProcessor(MessageProcessor):
 
         if add and self.allow_update_stac:
             # If citation does exist, update the stac record if the citation_url is not present yet.
-            self.update_stac(item_id, collection, citation_url)
+            self.update_stac_links(item_id, collection, citation_url)
         else:
             logger.info(f'Skipped pre-existing citation for STAC item {item_id}')
 
         return True, True
-        
-    def update_stac(self, stac_id: str, stac_collection: str, citation_url: str):
-        
-        payload = [{
-            "op":"add",
-            "path": "/links/-",
-            "value": {
-                "href": citation_url,
-                "type": "application/json",
-                "rel":"cite-as"
-            }
-        }]
-
-        stac_url = os.path.join(
-            self.stac_api_endpoint,
-            f'collections/{stac_collection}/items/{stac_id}'
-        )
-
-        logger.info(f"Updating STAC: {stac_url}")
-
-        with httpx.Client(timeout=self.timeout,verify=False) as client:
-            response = client.patch(
-                url=stac_url,
-                auth=self.stac_auth,
-                json=payload,
-                headers=self.stac_headers)
-            
-        logger.info(f'{stac_url}: {response.status_code}')
-        logger.info(response.content)
 
 def get_all_items(
         stac_query: str, 
