@@ -54,8 +54,12 @@ class CitationKafkaConsumer(KafkaConsumer):
                     # they are one of the supported projects
                     message = self.consumer.poll(timeout=self.settings.timeout)
 
+                    if logged > 100:
+                        logged = 0
+                        logger.info('Silently skipped 100 messages - no action needed')
+
                     if message is None:
-                        time.sleep(0.1)
+                        logged += 1
                         continue
 
                     commit, processed = self.message_processor.ingest(
@@ -65,10 +69,6 @@ class CitationKafkaConsumer(KafkaConsumer):
                         logged = 0
                     else:
                         logged += 1
-
-                    if logged > 100:
-                        logged = 0
-                        logger.info('Silently skipped 100 messages - no action needed')
 
                     if commit:
                         self.consumer.commit(message=message, asynchronous=False)
@@ -115,42 +115,6 @@ class STACItemUpdater:
             scope="entitlements:urn:mace:egi.eu:group:esgf.vo.egi.eu:project:*:role=CITATION#aai.egi.eu"
         )
 
-    # def test_add_asset(self, stac_id: str, stac_collection: str):
-
-    #     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-    #     payload = [{
-    #         "op":"add",
-    #         'path':'/assets/reference_file',
-    #         'value':{
-    #             'href':'https://dap.ceda.ac.uk/badc/cmip6/metadata/aggregations/cfa/ScenarioMIP/MOHC/UKESM1-1-LL/cr1.0/CMIP6.ScenarioMIP.MOHC.UKESM1-1-LL.ssp370.r1i1p1f2.Amon.tas.gn.v20220512.cr1.0.nca',
-    #             'type':"application/netcdf",
-    #             'role': ["data", "virtual"],
-    #             'description': 'Kerchunk reference file for virtual aggregation.',
-    #             "created": now,
-    #             "updated": now,
-    #             "protocol": 'https',
-    #             'file:size': 51178
-    #         }
-    #     }]
-
-    #     stac_url = os.path.join(
-    #         self.stac_api_endpoint,
-    #         f'collections/{stac_collection}/items/{stac_id}'
-    #     )
-
-    #     logger.info(f"Updating STAC: {stac_url}")
-
-    #     with httpx.Client(timeout=self.timeout,verify=False) as client:
-    #         response = client.patch(
-    #             url=stac_url,
-    #             auth=self.stac_auth,
-    #             json=payload,
-    #             headers=self.stac_headers)
-            
-    #     logger.info(f'{stac_url}: {response.status_code}')
-    #     logger.info(response.content)
-
 
     def update_stac_links(self, stac_id: str, stac_collection: str, citation_url: str):
             
@@ -195,12 +159,12 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
         self.citation_password = os.environ['CITATION_PASSWORD']
         self.pause_delay = int(os.environ.get('PAUSE_DELAY',"30"))
 
-        if not self.citation_api_token:
-            self.refresh_token()
-
         self.citation_api_new = os.path.join(self.citation_base_url, 'citation/')
 
         super().__init__(allow_update_stac)
+
+        if not self.citation_api_token:
+            self.refresh_token()
 
     def refresh_token(self):
         """
@@ -337,9 +301,8 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
             "cordex-cmip6:source_id",
         ]
 
-        license = LICENSES['CORDEX-CMIP6']
         citation_url, facet_values = self.citation_url(cordex_facets, stac_info)
-        return citation_url, facet_values, {'license':license}
+        return citation_url, facet_values
 
     def cmip6plus_citation(self, stac_info: dict):
 
@@ -351,9 +314,8 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
             "cmip6plus:experiment_id",
         ]
 
-        license = LICENSES['CMIP6Plus']
         citation_url, facet_values = self.citation_url(cmip6plus_facets, stac_info)
-        return citation_url, facet_values, {'license':license}
+        return citation_url, facet_values
     
     def cmip7_citation(self, stac_info: dict):
 
@@ -364,9 +326,9 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
             "cmip7:source_id",
             "cmip7:experiment_id",
         ]
-        license = LICENSES['CMIP7']
+
         citation_url, facet_values = self.citation_url(cmip7_facets, stac_info)
-        return citation_url, facet_values, {'license':license}
+        return citation_url, facet_values
     
     def get_author_info(self, facets: dict, collection: str, item_id: str) -> dict:
         """
@@ -428,16 +390,16 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
         if self.has_citation_url(stac_item):
             # No further action required
             return True, True
-
+        
         match collection:
             case 'CORDEX-CMIP6':
-                citation_url, facet_data, extra_data = self.cordex_citation(stac_item)
+                citation_url, facet_data = self.cordex_citation(stac_item)
             case 'CMIP6Plus':
-                citation_url, facet_data, extra_data = self.cmip6plus_citation(stac_item)
+                citation_url, facet_data = self.cmip6plus_citation(stac_item)
             case _:
-                citation_url, facet_data, extra_data = self.cmip7_citation(stac_item)
+                citation_url, facet_data = self.cmip7_citation(stac_item)
 
-        citation_data = facet_data | self.get_author_info(facet_data, collection, item_id) | extra_data
+        citation_data = facet_data | self.get_author_info(facet_data, collection, item_id)
 
         status = 200
         if not self.citation_exists(citation_url):
@@ -460,6 +422,7 @@ def get_all_items(
         stac_query: str, 
         first_only: bool = False,
         count_missing_only: bool = False,
+        obtain_citeas: bool = False,
         instant_process: CitationMessageProcessor | None = None) -> list:
     """
     Identify all STAC items corresponding to a query.
@@ -470,12 +433,14 @@ def get_all_items(
 
     resp = requests.get(stac_query).json()
     count = 0
+    citeas = []
 
     item_payloads = []
     has_next = True
     while has_next:
 
         logger.debug(f'Querying: {stac_query}')
+        time.sleep(0.1)
 
         items = [
             {
@@ -499,7 +464,10 @@ def get_all_items(
         has_next = ('next' in [link['rel'] for link in resp['links']])
         if has_next:
             stac_query = next(link['href'] for link in resp['links'] if link['rel'] == 'next')
-            resp = requests.get(stac_query).json()
+            resp = requests.get(stac_query)
+            resp.raise_for_status()
+            
+            resp = resp.json()
 
         if first_only:
             has_next = False

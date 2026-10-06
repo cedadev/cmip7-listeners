@@ -107,28 +107,36 @@ FACET_ABSTRACT_DESCRIPTIONS = {
     "experiment_id": "Experiment: ",
 }
 
-LICENSES = {
-    'CMIP7':"CMIP7 is a project of the World Climate Research Programme (WCRP)," \
-        " coordinated by the Working Group on Coupled Modelling (WGCM)." \
-        " Phase 7 builds on previous phases executed under the leadership of the" \
-        " Program for Climate Model Diagnosis and Intercomparison (PCMDI)"\
-        " and relies on the Earth System Grid Federation (ESGF) and the Centre for" \
-        " Environmental Data Analysis (CEDA) along with numerous related activities" \
-        " for implementation.",
-    'CMIP6Plus':"CMIP Phase 6 Plus (CMIP6Plus) is a continuity activity that enables" \
-        " modelling groups to contribute to projects initiated post-CMIP6 but before" \
-        " the CMIP7 infrastructure and experiment design is available. Unlike CMIP6" \
-        " and CMIP7, CMIP6Plus has no coordinated or managed Data Request, instead" \
-        " CMIP6Plus MIPs coordinate the list of variables contributed by modelling" \
-        " groups independently. CMIP6Plus controlled vocabularies (CVs) are project" \
-        " specific, CMIP6Plus CVs for activity, experiment and model (source_id) are" \
-        " listed in the CMIP6Plus_CVs github repository.",
-    'CORDEX-CMIP6': "CORDEX is a programme of the World Climate Research Programme" \
-        " (WCRP), coordinated under the umbrella of the Regional Information for" \
-        " Society (RIfS). CORDEX-CMIP6 builds on the work of the 6th phase of the" \
-        " Coupled Model Intercomparison Project (CMIP6) and the European Centre for" \
-        " Medium-Range Weather Forecasts (ECMWF) ERA5 reanalysis and relies on the" \
-        " Earth System Grid Federation (ESGF) and the Centre for Environmental Data" \
-        " Analysis (CEDA) along with numerous related activities" \
-        " for implementation."
+
+GENERAL_INFO = {
+    'CMIP7'.lower():"CMIP7 is a project of the [World Climate Research Programme " \
+        "(WCRP)](https://www.wcrp-climate.org/), providing climate projections " \
+        "to understand past, present, and future climate changes. It is part of the " \
+        "[WCRP Earth System Modelling and Observations (ESMO) Core Project](https://" \
+        "wcrp-esmo.org/), which was formed to coordinate all modelling, data, and " \
+        "observation activities across WCRP and its key partners. Further details can " \
+        "be found [here](https://www.wcrp-cmip.org/cmip-overview/) and in the [CMIP7 " \
+        "Guidance pages](https://wcrp-cmip.github.io/cmip7-guidance/). Parties using CMIP " \
+        "data should ensure they have read the [WCRP CMIP (2026) CMIP Data Disclaimer](" \
+        "https://doi.org/10.5281/zenodo.18155119).",
+    'CMIP6Plus'.lower():"CMIP Phase 6 Plus (CMIP6Plus) is a continuity activity that enables " \
+        "modelling groups to contribute to projects initiated post-CMIP6 but before processes " \
+        "for registering CMIP7 community MIPs and experiments are available. CMIP6Plus is supported by the " \
+        "WCRP-ESMO Infrastructure Panel alongside other activities and will remain open until " \
+        "CMIP7 procedures fully support the establishment of community MIPs and their data " \
+        "requirements. Further information can be found [here](https://www.wcrp-cmip.org/cmip-phases/cmip6plus/). " \
+        "Parties using CMIP data should ensure they have read the [WCRP CMIP (2026) CMIP Data Disclaimer](" \
+        "https://doi.org/10.5281/zenodo.18155119).",
+    'CORDEX-CMIP6'.lower(): "[CORDEX](https://cordex.org) is a [World Climate Research Programme (WCRP)]" \
+        "(https://www.wcrp-climate.org/) initiative that advances the science and " \
+        "application of regional climate downscaling by coordinating experiments " \
+        "across fourteen continental domains and fostering related strategic " \
+        "activities and partnerships. It provides regional climate projections " \
+        "(driven by CMIP projections) to support the understanding of recent and "\
+        "future regional climate change. CORDEX contributes to the [Regional " \
+        "Information for Society (RIfS)](https://www.wcrp-rifs.org/) Core Project. " \
+        "Users of CORDEX data should be familiar with the [CORDEX Terms of Use](" \
+        "https://cordex.org/data-access/cordex-cmip6-data/cordex-cmip6-terms-of-use/)." \
+        " A list of institutions contributing to CORDEX is available [here](" \
+        "https://wcrp-cordex.github.io/cordex-cmip6-cv/CORDEX-CMIP6_institution_id.html)."
 }
