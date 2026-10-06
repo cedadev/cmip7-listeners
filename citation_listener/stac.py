@@ -33,12 +33,22 @@ def patch_stac(collections: str, count_only: bool, process: bool, verbose: int):
     if collections != 'all':
         all_collections = [collections]
 
+    counts = []
     for collection in all_collections:
-        c = get_all_items(
-            os.path.join(stac_api, f'collections/{collection}/items'),
+        counts.append((collection,get_all_items(
+            os.path.join(stac_api, f'collections/{collection}/items','?limit=200'),
             instant_process=mp,
             count_missing_only=count_only
-        )
+        )))
 
-        if count_only:
-            print(f'{collection}: missing cite-as: {c}')
+    if count_only:
+        for c in counts:
+
+            query = os.path.join(stac_api, f'collections/{collection}/items','?limit=200').json()
+            maxq = query['numberMatched']
+            
+            print(f'{c[0]}: missing cite-as: {c[1]}/{maxq}')
+
+            # CORDEX-CMIP6: 0/27931
+            # CMIP7: 0/12329
+            # CMIP6Plus: 0/3113
