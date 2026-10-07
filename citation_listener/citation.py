@@ -14,7 +14,6 @@ from httpx_auth import OAuth2ClientCredentials
 
 from citation_listener.external import poll_wdc_api
 from citation_listener.utils import SUPPORTED_PROJECTS, logstream, cite_as_needed
-from citation_listener.facet_mappings import LICENSES
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logstream)
