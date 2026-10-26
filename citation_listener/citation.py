@@ -56,13 +56,21 @@ class CitationKafkaConsumer(KafkaConsumer):
                     if logged > 100:
                         logged = 0
                         logger.info('Silently skipped 100 messages - no action needed')
+                        logger.info(f'{len(self.message_processor.delay_queue)} delayed messages.')
 
                     if message is None:
-                        logged += 1
-                        continue
+
+                        if self.message_processor.has_delayed():
+                            logger.info(f'{len(self.message_processor.delay_queue)} delayed messages - processing')
+                            message = self.message_processor.get_delayed()
+                        else:
+                            logged += 1
+                            continue
+                    else:
+                        message = message.value().decode('utf-8')
 
                     commit, processed = self.message_processor.ingest(
-                        message.value().decode('utf-8'))
+                        message)
 
                     if processed:
                         logged = 0
@@ -149,6 +157,8 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
 
     def __init__(self, allow_update_stac: bool = True):
 
+        self.delay_queue = []
+
         self.skip_exceptions = os.environ.get("RAISE_ALL_INTERNAL_ERRORS")
 
         self.citation_base_url = os.environ['CITATION_BASE_URL']
@@ -164,6 +174,21 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
 
         if not self.citation_api_token:
             self.refresh_token()
+
+    def has_delayed(self):
+        return len(self.delay_queue) > 0
+
+    def get_delayed(self):
+        new_message = self.delay_queue[0]
+        self.delay_queue = self.delay_queue[1:]
+
+        # new message of the form of the payload
+        return json.dumps({
+            'data':{
+                'payload':new_message
+            }
+        })
+
 
     def refresh_token(self):
         """
@@ -384,6 +409,8 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
 
         if 'type' not in stac_item:
             logger.info(f'Error: Failed to fetch item: {item_id} from {collection}: {stac_item}')
+            self.delay_queue.append(payload)
+
             return False, True
         
         if self.has_citation_url(stac_item):
