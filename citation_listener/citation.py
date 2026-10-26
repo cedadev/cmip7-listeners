@@ -383,7 +383,7 @@ class CitationMessageProcessor(STACItemUpdater, MessageProcessor):
         stac_item = requests.get(f'{self.stac_api_endpoint}/collections/{collection}/items/{item_id}').json()
 
         if 'type' not in stac_item:
-            logger.info(f'Error: Failed to fetch item: {item_id} from {collection}')
+            logger.info(f'Error: Failed to fetch item: {item_id} from {collection}: {stac_item}')
             return False, True
         
         if self.has_citation_url(stac_item):
@@ -432,31 +432,38 @@ def get_all_items(
 
     resp = requests.get(stac_query).json()
     count = 0
-    citeas = []
+    total = 0
 
     item_payloads = []
     has_next = True
     while has_next:
+
+        update_required = []
 
         logger.debug(f'Querying: {stac_query}')
         time.sleep(0.1)
 
         items = [
             {
-                'item_id':item['id'],
-                'collection_id': item['collection']}
+                'data':{
+                    'payload':{
+                        'item_id':item['id'],
+                        'collection_id': item['collection']}}}
             for item in resp['features']]
 
-        if count:
-            count += len([item for item in resp['features'] if cite_as_needed(item, None)])
+        total += len(items)
+
+        update_required = [x for x, item in enumerate(resp['features']) if cite_as_needed(item, None)]
+        if count_missing_only:
+            count += len(update_required)
 
         # Instantly process the STAC item 
-        if instant_process is not None:
-            for item in items:
+        if instant_process is not None and update_required:
+            for id in update_required:
 
                 # Reprocess all items - only ones needing a cite-as
                 # link will actually be reprocessed.
-                instant_process.ingest(json.dumps(item))
+                instant_process.ingest(json.dumps(items[id]))
         else:
             item_payloads += items
 
@@ -473,5 +480,5 @@ def get_all_items(
             item_payloads = item_payloads[:1]
 
     if count_missing_only:
-        return count
+        return (count, total)
     return item_payloads
