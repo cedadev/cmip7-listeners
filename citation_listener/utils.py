@@ -208,6 +208,7 @@ def build_query_url(stac_api: str, data: dict):
 
 
 def cite_as_needed(stac_item: dict, citation_url: str | None) -> bool:
+
     add = True
     for link in stac_item['links']:
         if link['rel'] == 'cite-as':

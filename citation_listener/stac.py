@@ -1,4 +1,4 @@
-import json
+import requests
 import logging
 import os
 import click
@@ -43,12 +43,12 @@ def patch_stac(collections: str, count_only: bool, process: bool, verbose: int):
 
     if count_only:
         for c in counts:
-
-            query = os.path.join(stac_api, f'collections/{collection}/items','?limit=200').json()
-            maxq = query['numberMatched']
             
-            print(f'{c[0]}: missing cite-as: {c[1]}/{maxq}')
+            print(f'{c[0]}: missing cite-as: {c[1][0]}/{c[1][1]}')
 
             # CORDEX-CMIP6: 0/27931
             # CMIP7: 0/12329
             # CMIP6Plus: 0/3113
+
+if __name__ == '__main__':
+    patch_stac()

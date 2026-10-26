@@ -102,7 +102,7 @@ def patch_citations_main(
 
 
 @click.command()
-@click.argument("citations_file")
+@click.option("--file",'citations_file_or_additions', help='Specific additions to run through patching')
 @click.option("--stac", "allow_update_stac", help="allow updates to STAC index", is_flag=True, default=False)
 @click.option("--failed", "update_failed", help="Patch failed items", is_flag=True, default=False)
 def patch_citations(
