@@ -45,7 +45,7 @@ class CitationKafkaConsumer(KafkaConsumer):
                 self.settings.topics,
             )
 
-            logged = 0
+            skipped, empty = 0,0
             while True:
                 message = None
                 try:
@@ -53,29 +53,34 @@ class CitationKafkaConsumer(KafkaConsumer):
                     # they are one of the supported projects
                     message = self.consumer.poll(timeout=self.settings.timeout)
 
-                    if logged > 100:
-                        logged = 0
-                        logger.info('Silently skipped 100 messages - no action needed')
+                    if empty > 100:
+                        empty = 0
+                        logger.info('Silently skipped 100 empty messages - no action needed')
                         logger.info(f'{len(self.message_processor.delay_queue)} delayed messages.')
+
+                    if skipped > 100:
+                        skipped = 0
+                        logger.info('Silently skipped 100 messages - no action needed')
 
                     if message is None:
 
                         if self.message_processor.has_delayed():
                             logger.info(f'{len(self.message_processor.delay_queue)} delayed messages - processing')
-                            message = self.message_processor.get_delayed()
+                            message_value = self.message_processor.get_delayed()
                         else:
-                            logged += 1
+                            empty += 1
                             continue
                     else:
-                        message = message.value().decode('utf-8')
+                        message_value = message.value().decode('utf-8')
 
                     commit, processed = self.message_processor.ingest(
-                        message)
+                        message_value)
 
                     if processed:
-                        logged = 0
+                        skipped = 0
+                        empty = 0
                     else:
-                        logged += 1
+                        skipped += 1
 
                     if commit:
                         self.consumer.commit(message=message, asynchronous=False)
